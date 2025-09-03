@@ -8,8 +8,8 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    --background: 248 250 252;
-    --foreground: 226 232 240;
+    --background: 255 255 255;
+    --foreground: 15 23 42;
 
     --card: 255 255 255;
     --card-foreground: 15 23 42;
@@ -21,11 +21,11 @@ All colors MUST be HSL.
     --primary-foreground: 255 255 255;
     --primary-glow: 244 79% 77%;
 
-    --secondary: 240 4.8% 95.9%;
+    --secondary: 248 250 252;
     --secondary-foreground: 15 23 42;
 
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 100 116 139;
+    --muted: 248 250 252;
+    --muted-foreground: 71 85 105;
 
     --accent: 262 83% 58%;
     --accent-foreground: 255 255 255;
@@ -35,13 +35,13 @@ All colors MUST be HSL.
     --destructive-foreground: 210 40% 98%;
 
     --border: 226 232 240;
-    --input: 226 232 240;
+    --input: 248 250 252;
     --ring: 239 68% 68%;
 
     /* Gradients */
     --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-glow)));
     --gradient-accent: linear-gradient(135deg, hsl(var(--accent)), hsl(var(--accent-glow)));
-    --gradient-subtle: linear-gradient(180deg, hsl(var(--background)), hsl(248 250 252 / 0.8));
+    --gradient-subtle: linear-gradient(180deg, hsl(255 255 255), hsl(248 250 252 / 0.8));
 
     /* Shadows */
     --shadow-elegant: 0 10px 30px -10px hsl(var(--primary) / 0.3);
@@ -105,7 +105,7 @@ All colors MUST be HSL.
     /* Dark mode gradients */
     --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-glow)));
     --gradient-accent: linear-gradient(135deg, hsl(var(--accent)), hsl(var(--accent-glow)));
-    --gradient-subtle: linear-gradient(180deg, hsl(var(--background)), hsl(15 23 42 / 0.8));
+    --gradient-subtle: linear-gradient(180deg, hsl(15 23 42), hsl(15 23 42 / 0.8));
 
     /* Dark mode shadows */
     --shadow-elegant: 0 10px 30px -10px hsl(0 0% 0% / 0.5);
