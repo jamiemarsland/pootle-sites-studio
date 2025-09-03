@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Loader2, AlertCircle, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Loader2, AlertCircle, ExternalLink, Plus } from 'lucide-react';
 import { getSiteMetadata, updateSite } from '@/utils/storage';
 import { syncMemfsToOPFS, syncOPFSToMemfs } from '@/utils/playground';
 import { Site as SiteType } from '@/types/site';
@@ -224,7 +224,17 @@ const Site = () => {
               </p>
             </div>
 
-            <div className="w-32" /> {/* Spacer for centering */}
+            <div className="flex items-center gap-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => navigate('/')}
+                className="hover:bg-accent hover:text-accent-foreground"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                New Site
+              </Button>
+            </div>
           </div>
         </div>
       </header>
