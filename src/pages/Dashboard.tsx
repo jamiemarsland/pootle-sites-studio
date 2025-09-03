@@ -39,7 +39,7 @@ const Dashboard = () => {
         title: newSiteTitle.trim(),
         createdAt: new Date().toISOString(),
         lastModified: new Date().toISOString(),
-        isInitialized: true // Set to true so the Open button works immediately
+        isInitialized: false // Fresh site; will install WP then sync memfs -> OPFS on first open
       };
 
       addSite(newSite);

@@ -17,27 +17,44 @@ export const PLAYGROUND_CONFIG = {
   }
 };
 
-// Start WordPress Playground in an iframe
+// Start WordPress Playground in an iframe with OPFS mount
 export const initializePlayground = async (
   iframe: HTMLIFrameElement,
   siteId: string,
-  onReady?: () => void
+  isInitialized: boolean
 ): Promise<any> => {
   try {
     console.log(`Initializing WordPress Playground for site: ${siteId}`);
-    
+
+    const mountDescriptor: any = {
+      device: {
+        type: 'opfs',
+        path: `wp-studio/sites/${siteId}`,
+      },
+      mountpoint: '/wordpress',
+      initialSyncDirection: isInitialized ? 'opfs-to-memfs' : 'memfs-to-opfs',
+    };
+
     const client = await startPlaygroundWeb({
       iframe,
       remoteUrl: `https://playground.wordpress.net/remote.html`,
-      blueprint: PLAYGROUND_CONFIG.blueprint
+      blueprint: PLAYGROUND_CONFIG.blueprint,
+      shouldInstallWordPress: !isInitialized,
+      mounts: isInitialized ? [mountDescriptor] : [],
     });
 
-    console.log('WordPress Playground initialized successfully');
-    
-    if (onReady) {
-      onReady();
+    // Wait until Playground is fully ready
+    if (typeof (client as any).isReady === 'function') {
+      await (client as any).isReady();
     }
 
+    // On first launch, mount OPFS after WordPress installs to run memfs -> opfs
+    if (!isInitialized && typeof (client as any).mountOpfs === 'function') {
+      await (client as any).mountOpfs(mountDescriptor);
+      console.log('Mounted OPFS and synced memfs -> OPFS for initial install');
+    }
+
+    console.log('WordPress Playground initialized successfully');
     return client;
   } catch (error) {
     console.error('Failed to initialize WordPress Playground:', error);

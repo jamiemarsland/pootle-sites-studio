@@ -2,8 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Loader2, AlertCircle, ExternalLink, Plus } from 'lucide-react';
-import { getSiteMetadata, updateSite } from '@/utils/storage';
-import { initializePlayground, syncMemfsToOPFS, syncOPFSToMemfs } from '@/utils/playground';
+import { getSiteMetadata, updateSite, requestPersistentStorage } from '@/utils/storage';
+import { initializePlayground } from '@/utils/playground';
 import { Site as SiteType } from '@/types/site';
 import { useToast } from '@/hooks/use-toast';
 
@@ -66,108 +66,33 @@ const Site = () => {
     try {
       console.log(`Initializing WordPress for site: ${site.title} (${site.id})`);
 
-      // Initialize WordPress Playground
+      // Initialize WordPress Playground with OPFS persistence
       const client = await initializePlayground(
         iframeRef.current,
         site.id,
-        () => {
-          console.log('WordPress Playground is ready');
-        }
+        site.isInitialized
       );
 
       setPlaygroundClient(client);
 
-      // If site is already initialized, load from OPFS
-      if (site.isInitialized) {
-        console.log('Loading existing site data from OPFS...');
-        try {
-          await syncOPFSToMemfs(client, site.id);
-          console.log('Site data loaded successfully');
-          toast({
-            title: 'Site loaded',
-            description: 'Your previous content has been restored',
-          });
-        } catch (error) {
-          console.error('Failed to load site data:', error);
-          toast({
-            title: 'Warning',
-            description: 'Could not load previous site data. Starting fresh.',
-            variant: 'destructive',
-          });
-        }
+      if (!site.isInitialized) {
+        // Mark site as initialized after first OPFS sync
+        updateSite(site.id, { 
+          isInitialized: true,
+          lastModified: new Date().toISOString()
+        });
+        setSite(prev => prev ? { ...prev, isInitialized: true } : null);
+        toast({
+          title: 'Site ready',
+          description: `${site.title} has been initialized and persisted`,
+        });
+        console.log('Site initialized and OPFS mounted');
       } else {
-        // First time setup - wait for WordPress to install, then save
-        console.log('First time setup - WordPress will install...');
-        
-        // Wait for WordPress to fully install
-        setTimeout(async () => {
-          try {
-            await syncMemfsToOPFS(client, site.id);
-            
-            // Mark site as initialized
-            updateSite(site.id, { 
-              isInitialized: true,
-              lastModified: new Date().toISOString()
-            });
-            
-            setSite(prev => prev ? { ...prev, isInitialized: true } : null);
-            
-            toast({
-              title: 'Site ready',
-              description: `${site.title} has been initialized and is ready to use`,
-            });
-            
-            console.log('Site initialized and saved to OPFS');
-          } catch (error) {
-            console.error('Failed to save initial site data:', error);
-            toast({
-              title: 'Save failed',
-              description: 'Could not save site data. Changes may not persist.',
-              variant: 'destructive',
-            });
-          }
-        }, 15000); // Wait 15 seconds for WordPress to install
+        toast({ title: 'Site loaded', description: 'Restored from OPFS' });
       }
 
-      // Set up auto-save every 30 seconds
-      if (autoSaveIntervalRef.current) {
-        clearInterval(autoSaveIntervalRef.current);
-      }
-      
-      autoSaveIntervalRef.current = setInterval(async () => {
-        if (client && site.isInitialized) {
-          try {
-            await syncMemfsToOPFS(client, site.id);
-            updateSite(site.id, { lastModified: new Date().toISOString() });
-            console.log('Auto-saved site data');
-          } catch (error) {
-            console.error('Auto-save failed:', error);
-          }
-        }
-      }, 30000);
-
-      // Save on page unload
-      const handleBeforeUnload = async () => {
-        if (client && site.isInitialized) {
-          try {
-            await syncMemfsToOPFS(client, site.id);
-            updateSite(site.id, { lastModified: new Date().toISOString() });
-            console.log('Saved on page unload');
-          } catch (error) {
-            console.error('Failed to save on unload:', error);
-          }
-        }
-      };
-
-      window.addEventListener('beforeunload', handleBeforeUnload);
-
-      // Cleanup function
-      return () => {
-        if (autoSaveIntervalRef.current) {
-          clearInterval(autoSaveIntervalRef.current);
-        }
-        window.removeEventListener('beforeunload', handleBeforeUnload);
-      };
+      // With OPFS mounted at /wordpress, Playground automatically syncs the
+      // filesystem at the end of every PHP request. No manual saves required.
 
     } catch (error) {
       console.error('Failed to initialize WordPress:', error);
@@ -184,35 +109,19 @@ const Site = () => {
 
   const handleManualSave = async () => {
     if (playgroundClient && site?.isInitialized) {
-      try {
-        await syncMemfsToOPFS(playgroundClient, site.id);
-        updateSite(site.id, { lastModified: new Date().toISOString() });
-        toast({
-          title: 'Site saved',
-          description: 'Your changes have been saved successfully',
-        });
-        console.log('Manual save completed');
-      } catch (error) {
-        console.error('Manual save failed:', error);
-        toast({
-          title: 'Save failed',
-          description: 'Could not save your changes. Please try again.',
-          variant: 'destructive',
-        });
-      }
+      updateSite(site.id, { lastModified: new Date().toISOString() });
+      toast({
+        title: 'Saved',
+        description: 'Changes are persisted automatically to OPFS.',
+      });
+      console.log('Manual save triggered (OPFS auto-sync)');
     }
   };
 
   const handleBack = async () => {
-    // Save before leaving
+    // No manual save needed; OPFS syncs automatically
     if (playgroundClient && site?.isInitialized) {
-      try {
-        await syncMemfsToOPFS(playgroundClient, site.id);
-        updateSite(site.id, { lastModified: new Date().toISOString() });
-        console.log('Saved before leaving');
-      } catch (error) {
-        console.error('Failed to save before leaving:', error);
-      }
+      updateSite(site.id, { lastModified: new Date().toISOString() });
     }
     navigate('/');
   };

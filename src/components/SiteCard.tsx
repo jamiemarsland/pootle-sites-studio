@@ -102,7 +102,6 @@ export const SiteCard = ({ site, onUpdate }: SiteCardProps) => {
           <Button 
             onClick={handleOpen}
             className="flex-1 bg-gradient-primary text-primary-foreground hover:opacity-90 transition-opacity"
-            disabled={!site.isInitialized}
           >
             <ExternalLink className="w-4 h-4 mr-2" />
             Open
