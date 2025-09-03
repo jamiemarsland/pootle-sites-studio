@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Loader2, AlertCircle, ExternalLink, Plus } from 'lucide-react';
 import { getSiteMetadata, updateSite } from '@/utils/storage';
-import { syncMemfsToOPFS, syncOPFSToMemfs } from '@/utils/playground';
+import { initializePlayground, syncMemfsToOPFS, syncOPFSToMemfs } from '@/utils/playground';
 import { Site as SiteType } from '@/types/site';
 import { useToast } from '@/hooks/use-toast';
 
@@ -11,11 +11,13 @@ const Site = () => {
   const { siteId } = useParams<{ siteId: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   const [site, setSite] = useState<SiteType | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isInitializing, setIsInitializing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [wordpressWindow, setWordpressWindow] = useState<Window | null>(null);
+  const [playgroundClient, setPlaygroundClient] = useState<any>(null);
+  const autoSaveIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (!siteId) {
@@ -25,6 +27,21 @@ const Site = () => {
 
     loadSite();
   }, [siteId, navigate]);
+
+  useEffect(() => {
+    if (site && iframeRef.current && !playgroundClient) {
+      initializeWordPress();
+    }
+  }, [site, playgroundClient]);
+
+  useEffect(() => {
+    // Cleanup on unmount
+    return () => {
+      if (autoSaveIntervalRef.current) {
+        clearInterval(autoSaveIntervalRef.current);
+      }
+    };
+  }, []);
 
   const loadSite = () => {
     const metadata = getSiteMetadata();
@@ -40,134 +57,162 @@ const Site = () => {
     setIsLoading(false);
   };
 
-  const openWordPressInNewTab = async () => {
-    if (!site) return;
+  const initializeWordPress = async () => {
+    if (!site || !iframeRef.current) return;
 
     setIsInitializing(true);
     setError(null);
 
     try {
-      console.log(`Opening WordPress for site: ${site.title} (${site.id})`);
+      console.log(`Initializing WordPress for site: ${site.title} (${site.id})`);
 
-      // Create a new window for WordPress Playground
-      const newWindow = window.open('', `wordpress-${site.id}`, 'width=1400,height=900,scrollbars=yes,resizable=yes');
-      
-      if (!newWindow) {
-        throw new Error('Failed to open new window. Please allow popups for this site.');
+      // Initialize WordPress Playground
+      const client = await initializePlayground(
+        iframeRef.current,
+        site.id,
+        () => {
+          console.log('WordPress Playground is ready');
+        }
+      );
+
+      setPlaygroundClient(client);
+
+      // If site is already initialized, load from OPFS
+      if (site.isInitialized) {
+        console.log('Loading existing site data from OPFS...');
+        try {
+          await syncOPFSToMemfs(client, site.id);
+          console.log('Site data loaded successfully');
+          toast({
+            title: 'Site loaded',
+            description: 'Your previous content has been restored',
+          });
+        } catch (error) {
+          console.error('Failed to load site data:', error);
+          toast({
+            title: 'Warning',
+            description: 'Could not load previous site data. Starting fresh.',
+            variant: 'destructive',
+          });
+        }
+      } else {
+        // First time setup - wait for WordPress to install, then save
+        console.log('First time setup - WordPress will install...');
+        
+        // Wait for WordPress to fully install
+        setTimeout(async () => {
+          try {
+            await syncMemfsToOPFS(client, site.id);
+            
+            // Mark site as initialized
+            updateSite(site.id, { 
+              isInitialized: true,
+              lastModified: new Date().toISOString()
+            });
+            
+            setSite(prev => prev ? { ...prev, isInitialized: true } : null);
+            
+            toast({
+              title: 'Site ready',
+              description: `${site.title} has been initialized and is ready to use`,
+            });
+            
+            console.log('Site initialized and saved to OPFS');
+          } catch (error) {
+            console.error('Failed to save initial site data:', error);
+            toast({
+              title: 'Save failed',
+              description: 'Could not save site data. Changes may not persist.',
+              variant: 'destructive',
+            });
+          }
+        }, 15000); // Wait 15 seconds for WordPress to install
       }
 
-      setWordpressWindow(newWindow);
-
-      // Set up the HTML for WordPress Playground using the playground.wordpress.net URL directly
-      const playgroundUrl = new URL('https://playground.wordpress.net/');
+      // Set up auto-save every 30 seconds
+      if (autoSaveIntervalRef.current) {
+        clearInterval(autoSaveIntervalRef.current);
+      }
       
-      // Add configuration parameters
-      playgroundUrl.searchParams.set('blueprint', JSON.stringify({
-        preferredVersions: {
-          php: '8.0',
-          wp: 'latest'
-        },
-        steps: [
-          {
-            step: 'login',
-            username: 'admin',
-            password: 'password'
+      autoSaveIntervalRef.current = setInterval(async () => {
+        if (client && site.isInitialized) {
+          try {
+            await syncMemfsToOPFS(client, site.id);
+            updateSite(site.id, { lastModified: new Date().toISOString() });
+            console.log('Auto-saved site data');
+          } catch (error) {
+            console.error('Auto-save failed:', error);
           }
-        ]
-      }));
-
-      // Navigate to WordPress Playground
-      newWindow.location.href = playgroundUrl.toString();
-
-      // Set up polling to check if window is ready
-      let checkCount = 0;
-      const maxChecks = 30; // 30 seconds max wait time
-      
-      const checkPlayground = () => {
-        checkCount++;
-        
-        if (newWindow.closed) {
-          console.log('WordPress window was closed by user');
-          setWordpressWindow(null);
-          setIsInitializing(false);
-          return;
         }
-        
-        if (checkCount >= maxChecks) {
-          console.log('WordPress Playground took too long to load');
-          setIsInitializing(false);
-          toast({
-            title: 'WordPress ready',
-            description: `${site.title} should be loading in the new tab`,
-          });
-          return;
-        }
+      }, 30000);
 
-        try {
-          // Try to access the window to see if it's loaded
-          const href = newWindow.location.href;
-          if (href && href.includes('playground.wordpress.net')) {
-            console.log('WordPress Playground loaded successfully');
-            
-            // Mark site as initialized if it's the first time
-            if (!site.isInitialized) {
-              updateSite(site.id, { 
-                isInitialized: true,
-                lastModified: new Date().toISOString()
-              });
-              
-              setSite(prev => prev ? { ...prev, isInitialized: true } : null);
-              
-              toast({
-                title: 'WordPress ready',
-                description: `${site.title} has been set up and opened in a new tab`,
-              });
-            } else {
-              toast({
-                title: 'WordPress opened',
-                description: `${site.title} is ready in the new tab`,
-              });
-            }
-            
-            setIsInitializing(false);
-            return;
+      // Save on page unload
+      const handleBeforeUnload = async () => {
+        if (client && site.isInitialized) {
+          try {
+            await syncMemfsToOPFS(client, site.id);
+            updateSite(site.id, { lastModified: new Date().toISOString() });
+            console.log('Saved on page unload');
+          } catch (error) {
+            console.error('Failed to save on unload:', error);
           }
-        } catch (e) {
-          // Cross-origin error expected until playground loads
         }
-        
-        // Continue checking
-        setTimeout(checkPlayground, 1000);
       };
 
-      // Start checking after a short delay
-      setTimeout(checkPlayground, 2000);
+      window.addEventListener('beforeunload', handleBeforeUnload);
 
-      // Clean up when window is closed
-      const checkClosed = setInterval(() => {
-        if (newWindow.closed) {
-          clearInterval(checkClosed);
-          setWordpressWindow(null);
-          console.log('WordPress window closed');
+      // Cleanup function
+      return () => {
+        if (autoSaveIntervalRef.current) {
+          clearInterval(autoSaveIntervalRef.current);
         }
-      }, 1000);
+        window.removeEventListener('beforeunload', handleBeforeUnload);
+      };
 
     } catch (error) {
-      console.error('Failed to open WordPress:', error);
-      setError('Failed to open WordPress. Please try again.');
-      setIsInitializing(false);
+      console.error('Failed to initialize WordPress:', error);
+      setError('Failed to initialize WordPress. Please try again.');
       toast({
-        title: 'Failed to open WordPress',
-        description: error instanceof Error ? error.message : 'Unknown error occurred',
+        title: 'Initialization failed',
+        description: 'Could not start WordPress. Please check your browser compatibility.',
         variant: 'destructive',
       });
+    } finally {
+      setIsInitializing(false);
     }
   };
 
-  const handleBack = () => {
-    // Close WordPress window if open
-    if (wordpressWindow && !wordpressWindow.closed) {
-      wordpressWindow.close();
+  const handleManualSave = async () => {
+    if (playgroundClient && site?.isInitialized) {
+      try {
+        await syncMemfsToOPFS(playgroundClient, site.id);
+        updateSite(site.id, { lastModified: new Date().toISOString() });
+        toast({
+          title: 'Site saved',
+          description: 'Your changes have been saved successfully',
+        });
+        console.log('Manual save completed');
+      } catch (error) {
+        console.error('Manual save failed:', error);
+        toast({
+          title: 'Save failed',
+          description: 'Could not save your changes. Please try again.',
+          variant: 'destructive',
+        });
+      }
+    }
+  };
+
+  const handleBack = async () => {
+    // Save before leaving
+    if (playgroundClient && site?.isInitialized) {
+      try {
+        await syncMemfsToOPFS(playgroundClient, site.id);
+        updateSite(site.id, { lastModified: new Date().toISOString() });
+        console.log('Saved before leaving');
+      } catch (error) {
+        console.error('Failed to save before leaving:', error);
+      }
     }
     navigate('/');
   };
@@ -200,128 +245,80 @@ const Site = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-subtle">
-      {/* Header */}
-      <header className="border-b border-border/50 bg-card/50 backdrop-blur-sm">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={handleBack}
-                className="hover:bg-accent hover:text-accent-foreground"
-              >
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Back to Dashboard
-              </Button>
-            </div>
-            
-            <div className="text-center flex-1">
-              <h1 className="text-2xl font-bold text-foreground">{site.title}</h1>
-              <p className="text-sm text-muted-foreground">
-                {site.isInitialized ? 'WordPress Site Ready' : 'Setting up WordPress...'}
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => navigate('/')}
-                className="hover:bg-accent hover:text-accent-foreground"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                New Site
-              </Button>
-            </div>
-          </div>
+    <div className="min-h-screen bg-background flex flex-col">
+      {/* Top Bar */}
+      <header className="bg-card border-b border-border px-4 py-2 flex items-center gap-3 shrink-0">
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          onClick={handleBack}
+          className="hover:bg-accent hover:text-accent-foreground"
+        >
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back
+        </Button>
+        
+        <div className="flex-1">
+          <h1 className="font-semibold text-foreground">{site.title}</h1>
         </div>
+
+        <div className="flex items-center gap-2">
+          {playgroundClient && site?.isInitialized && (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleManualSave}
+              className="hover:bg-accent hover:text-accent-foreground"
+            >
+              Save Changes
+            </Button>
+          )}
+          
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => navigate('/')}
+            className="hover:bg-accent hover:text-accent-foreground"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            New Site
+          </Button>
+        </div>
+
+        {isInitializing && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            {site.isInitialized ? 'Loading site...' : 'Installing WordPress...'}
+          </div>
+        )}
       </header>
 
-      {/* Main Content */}
-      <main className="container mx-auto px-6 py-12">
-        <div className="max-w-2xl mx-auto text-center">
-          {/* Site Status Card */}
-          <div className="bg-card rounded-lg border border-border/50 shadow-card p-8 mb-8">
-            <div className="mb-6">
-              <div className={`w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center ${
-                site.isInitialized ? 'bg-gradient-primary' : 'bg-muted'
-              }`}>
-                <ExternalLink className={`w-8 h-8 ${
-                  site.isInitialized ? 'text-primary-foreground' : 'text-muted-foreground'
-                }`} />
-              </div>
-              
-              <h2 className="text-xl font-semibold mb-2 text-card-foreground">
-                {site.isInitialized ? 'WordPress Ready' : 'Setting Up WordPress'}
-              </h2>
-              
-              <p className="text-muted-foreground mb-6">
+      {/* WordPress Playground */}
+      <div className="flex-1 relative">
+        {isInitializing && (
+          <div className="absolute inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-10">
+            <div className="text-center">
+              <Loader2 className="w-12 h-12 animate-spin mx-auto mb-4 text-primary" />
+              <h3 className="text-lg font-semibold mb-2">
+                {site.isInitialized ? 'Loading your WordPress site...' : 'Setting up WordPress...'}
+              </h3>
+              <p className="text-muted-foreground">
                 {site.isInitialized 
-                  ? 'Your WordPress site is ready. Click below to open it in a new tab.'
-                  : 'WordPress is being set up for the first time. This may take a few moments.'
+                  ? 'Restoring your content and settings' 
+                  : 'This may take a few moments on first launch'
                 }
               </p>
-              
-              {isInitializing && (
-                <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground mb-4">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Opening WordPress in new tab...
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-4">
-              <Button 
-                onClick={openWordPressInNewTab}
-                disabled={isInitializing}
-                size="lg"
-                className="bg-gradient-primary text-primary-foreground hover:opacity-90 transition-opacity shadow-elegant"
-              >
-                {isInitializing ? (
-                  <>
-                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                    Opening WordPress...
-                  </>
-                ) : (
-                  <>
-                    <ExternalLink className="w-5 h-5 mr-2" />
-                    Open WordPress in New Tab
-                  </>
-                )}
-              </Button>
-              
-              {wordpressWindow && !wordpressWindow.closed && (
-                <p className="text-sm text-primary">
-                  WordPress is open in a new tab
-                </p>
-              )}
             </div>
           </div>
-
-          {/* Site Info */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
-            <div className="bg-card rounded-lg border border-border/50 p-6">
-              <h3 className="font-semibold mb-2 text-card-foreground">Site Details</h3>
-              <div className="space-y-2 text-sm text-muted-foreground">
-                <p><span className="font-medium">Created:</span> {new Date(site.createdAt).toLocaleDateString()}</p>
-                <p><span className="font-medium">Last Modified:</span> {new Date(site.lastModified).toLocaleDateString()}</p>
-                <p><span className="font-medium">Status:</span> {site.isInitialized ? 'Active' : 'Setting up'}</p>
-              </div>
-            </div>
-            
-            <div className="bg-card rounded-lg border border-border/50 p-6">
-              <h3 className="font-semibold mb-2 text-card-foreground">WordPress Info</h3>
-              <div className="space-y-2 text-sm text-muted-foreground">
-                <p><span className="font-medium">Username:</span> admin</p>
-                <p><span className="font-medium">Password:</span> password</p>
-                <p><span className="font-medium">Version:</span> Latest</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </main>
+        )}
+        
+        <iframe
+          ref={iframeRef}
+          className="w-full h-full border-0"
+          title={`WordPress - ${site.title}`}
+          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+        />
+      </div>
     </div>
   );
 };
