@@ -67,22 +67,25 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-subtle">
+    <div className="min-h-screen bg-gradient-blueprint-dark blueprint-bg">
       {/* Header */}
-      <header className="border-b border-border/50 bg-card/50 backdrop-blur-sm sticky top-0 z-10">
+      <header className="border-b border-border/30 bg-card/80 backdrop-blur-md sticky top-0 z-10 shadow-blueprint">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center">
+              <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center shadow-glow">
                 <Zap className="w-5 h-5 text-primary-foreground" />
               </div>
-              <h1 className="text-2xl font-bold bg-gradient-primary bg-clip-text text-transparent">
-                Pootle Sites
-              </h1>
+              <div>
+                <h1 className="text-2xl font-bold text-foreground">
+                  Pootle Sites
+                </h1>
+                <p className="text-xs text-muted-foreground">WordPress Studio</p>
+              </div>
             </div>
             <Button 
               onClick={() => setShowNewSiteDialog(true)}
-              className="bg-gradient-primary text-primary-foreground hover:opacity-90 transition-opacity shadow-elegant"
+              className="blueprint-button"
             >
               <Plus className="w-4 h-4 mr-2" />
               New Site
@@ -96,13 +99,13 @@ const Dashboard = () => {
         {sites.length === 0 ? (
           /* Empty State */
           <div className="text-center py-16">
-            <div className="relative mx-auto mb-8 w-64 h-36 rounded-lg overflow-hidden shadow-card">
+            <div className="relative mx-auto mb-8 w-64 h-36 rounded-lg overflow-hidden blueprint-card">
               <img 
                 src={heroImage} 
                 alt="Pootle Sites" 
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover opacity-80"
               />
-              <div className="absolute inset-0 bg-gradient-primary/10" />
+              <div className="absolute inset-0 bg-gradient-primary/20" />
             </div>
             <h2 className="text-3xl font-bold text-foreground mb-4">
               Welcome to Pootle Sites
@@ -114,7 +117,7 @@ const Dashboard = () => {
             <Button 
               onClick={() => setShowNewSiteDialog(true)}
               size="lg"
-              className="bg-gradient-primary text-primary-foreground hover:opacity-90 transition-opacity shadow-elegant"
+              className="blueprint-button text-lg px-8 py-4"
             >
               <Plus className="w-5 h-5 mr-2" />
               Create Your First Site
@@ -149,7 +152,8 @@ const Dashboard = () => {
 
       {/* New Site Dialog */}
       <Dialog open={showNewSiteDialog} onOpenChange={setShowNewSiteDialog}>
-        <DialogContent>
+        <DialogContent className="blueprint-card"
+        >
           <DialogHeader>
             <DialogTitle>Create New Site</DialogTitle>
           </DialogHeader>
@@ -176,7 +180,7 @@ const Dashboard = () => {
             <Button 
               onClick={handleCreateSite} 
               disabled={!newSiteTitle.trim() || isCreating}
-              className="bg-gradient-primary text-primary-foreground hover:opacity-90"
+              className="blueprint-button"
             >
               {isCreating ? 'Creating...' : 'Create Site'}
             </Button>

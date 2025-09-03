@@ -8,7 +8,8 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    --background: 255 255 255;
+    /* Blueprint color scheme - Light mode (for admin/dev use) */
+    --background: 248 250 252;
     --foreground: 15 23 42;
 
     --card: 255 255 255;
@@ -17,35 +18,46 @@ All colors MUST be HSL.
     --popover: 255 255 255;
     --popover-foreground: 15 23 42;
 
-    --primary: 239 68% 68%;
+    /* Blueprint blue primary colors */
+    --primary: 212 100% 45%;
     --primary-foreground: 255 255 255;
-    --primary-glow: 244 79% 77%;
+    --primary-glow: 212 100% 60%;
 
-    --secondary: 248 250 252;
+    --secondary: 213 27% 84%;
     --secondary-foreground: 15 23 42;
 
-    --muted: 248 250 252;
+    --muted: 213 27% 84%;
     --muted-foreground: 71 85 105;
 
-    --accent: 262 83% 58%;
+    /* Blueprint accent colors */
+    --accent: 207 90% 54%;
     --accent-foreground: 255 255 255;
-    --accent-glow: 269 86% 70%;
+    --accent-glow: 207 90% 67%;
 
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
 
-    --border: 226 232 240;
-    --input: 248 250 252;
-    --ring: 239 68% 68%;
+    --border: 213 19% 91%;
+    --input: 213 27% 84%;
+    --ring: 212 100% 45%;
 
-    /* Gradients */
+    /* Blueprint-themed gradients */
     --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-glow)));
     --gradient-accent: linear-gradient(135deg, hsl(var(--accent)), hsl(var(--accent-glow)));
+    --gradient-blueprint: linear-gradient(180deg, hsl(213 39% 52%), hsl(214 84% 56%));
+    --gradient-blueprint-dark: linear-gradient(135deg, hsl(215 28% 17%), hsl(217 33% 17%));
     --gradient-subtle: linear-gradient(180deg, hsl(255 255 255), hsl(248 250 252 / 0.8));
 
-    /* Shadows */
+    /* Blueprint grid pattern */
+    --blueprint-grid: 
+      linear-gradient(rgba(59, 130, 246, 0.1) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(59, 130, 246, 0.1) 1px, transparent 1px);
+    --blueprint-grid-size: 20px 20px;
+
+    /* Enhanced shadows for blueprint depth */
     --shadow-elegant: 0 10px 30px -10px hsl(var(--primary) / 0.3);
     --shadow-glow: 0 0 40px hsl(var(--primary-glow) / 0.4);
+    --shadow-blueprint: 0 8px 32px hsl(214 84% 56% / 0.15);
     --shadow-card: 0 4px 6px -1px hsl(0 0% 0% / 0.1);
 
     /* Animations */
@@ -55,70 +67,76 @@ All colors MUST be HSL.
     --radius: 0.5rem;
 
     --sidebar-background: 0 0% 98%;
-
     --sidebar-foreground: 240 5.3% 26.1%;
-
     --sidebar-primary: 240 5.9% 10%;
-
     --sidebar-primary-foreground: 0 0% 98%;
-
     --sidebar-accent: 240 4.8% 95.9%;
-
     --sidebar-accent-foreground: 240 5.9% 10%;
-
     --sidebar-border: 220 13% 91%;
-
     --sidebar-ring: 217.2 91.2% 59.8%;
   }
 
   .dark {
-    --background: 15 23 42;
-    --foreground: 248 250 252;
+    /* Blueprint dark mode - Main blueprint aesthetic */
+    --background: 215 28% 17%;
+    --foreground: 213 31% 91%;
 
-    --card: 30 41 59;
-    --card-foreground: 248 250 252;
+    --card: 217 33% 17%;
+    --card-foreground: 213 31% 91%;
 
-    --popover: 30 41 59;
-    --popover-foreground: 248 250 252;
+    --popover: 217 33% 17%;
+    --popover-foreground: 213 31% 91%;
 
-    --primary: 239 68% 68%;
+    /* Blueprint blue theme */
+    --primary: 212 100% 45%;
     --primary-foreground: 255 255 255;
-    --primary-glow: 244 79% 77%;
+    --primary-glow: 212 100% 60%;
 
-    --secondary: 71 85 105;
-    --secondary-foreground: 248 250 252;
+    --secondary: 215 16% 47%;
+    --secondary-foreground: 213 31% 91%;
 
-    --muted: 71 85 105;
-    --muted-foreground: 148 163 184;
+    --muted: 215 16% 47%;
+    --muted-foreground: 213 19% 73%;
 
-    --accent: 262 83% 58%;
+    --accent: 207 90% 54%;
     --accent-foreground: 255 255 255;
-    --accent-glow: 269 86% 70%;
+    --accent-glow: 207 90% 67%;
 
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
 
-    --border: 71 85 105;
-    --input: 71 85 105;
-    --ring: 239 68% 68%;
+    --border: 215 16% 47%;
+    --input: 215 16% 47%;
+    --ring: 212 100% 45%;
 
-    /* Dark mode gradients */
+    /* Blueprint dark gradients */
     --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-glow)));
     --gradient-accent: linear-gradient(135deg, hsl(var(--accent)), hsl(var(--accent-glow)));
-    --gradient-subtle: linear-gradient(180deg, hsl(15 23 42), hsl(15 23 42 / 0.8));
+    --gradient-blueprint: linear-gradient(180deg, hsl(213 39% 52%), hsl(214 84% 56%));
+    --gradient-blueprint-dark: linear-gradient(135deg, hsl(215 28% 17%), hsl(217 33% 17%));
+    --gradient-subtle: linear-gradient(180deg, hsl(215 28% 17%), hsl(215 28% 17% / 0.8));
 
-    /* Dark mode shadows */
+    /* Blueprint dark grid */
+    --blueprint-grid: 
+      linear-gradient(rgba(59, 130, 246, 0.15) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(59, 130, 246, 0.15) 1px, transparent 1px);
+    --blueprint-grid-size: 20px 20px;
+
+    /* Blueprint dark shadows */
     --shadow-elegant: 0 10px 30px -10px hsl(0 0% 0% / 0.5);
     --shadow-glow: 0 0 40px hsl(var(--primary-glow) / 0.3);
+    --shadow-blueprint: 0 8px 32px hsl(0 0% 0% / 0.25);
     --shadow-card: 0 4px 6px -1px hsl(0 0% 0% / 0.3);
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+
+    /* Blueprint sidebar styling */
+    --sidebar-background: 217 33% 17%;
+    --sidebar-foreground: 213 31% 91%;
+    --sidebar-primary: 212 100% 45%;
+    --sidebar-primary-foreground: 255 255 255;
+    --sidebar-accent: 215 16% 47%;
+    --sidebar-accent-foreground: 213 31% 91%;
+    --sidebar-border: 215 16% 47%;
+    --sidebar-ring: 212 100% 45%;
   }
 }
 
@@ -129,5 +147,33 @@ All colors MUST be HSL.
 
   body {
     @apply bg-background text-foreground;
+    /* Set default to dark mode for blueprint aesthetic */
+    @apply dark;
+  }
+
+  /* Blueprint background pattern */
+  .blueprint-bg {
+    background-image: var(--blueprint-grid);
+    background-size: var(--blueprint-grid-size);
+    background-position: 0 0, 0 0;
+  }
+
+  /* Blueprint card styling */
+  .blueprint-card {
+    @apply bg-card/90 backdrop-blur-sm border border-border/50;
+    box-shadow: var(--shadow-blueprint);
+  }
+
+  /* Blueprint button variants */
+  .blueprint-button {
+    @apply bg-primary hover:bg-primary/90 text-primary-foreground;
+    @apply border border-primary-glow/30 shadow-glow;
+    @apply transition-all duration-300;
+  }
+
+  .blueprint-button-secondary {
+    @apply bg-secondary/50 hover:bg-secondary/70 text-secondary-foreground;
+    @apply border border-border/50 backdrop-blur-sm;
+    @apply transition-all duration-300;
   }
 }

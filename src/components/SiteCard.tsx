@@ -79,7 +79,7 @@ export const SiteCard = ({ site, onUpdate }: SiteCardProps) => {
 
   return (
     <>
-      <Card className="group hover:shadow-card transition-all duration-300 hover:-translate-y-1 bg-card border-border/50">
+      <Card className="group blueprint-card hover:shadow-blueprint transition-all duration-300 hover:-translate-y-1 hover:border-primary/30">
         <CardContent className="p-6">
           <div className="flex items-start justify-between mb-4">
             <div className="flex-1">
@@ -90,7 +90,7 @@ export const SiteCard = ({ site, onUpdate }: SiteCardProps) => {
                 <p>Created: {formatDate(site.createdAt)}</p>
                 <p>Modified: {formatDate(site.lastModified)}</p>
                 <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${site.isInitialized ? 'bg-primary' : 'bg-muted'}`} />
+                  <div className={`w-2 h-2 rounded-full ${site.isInitialized ? 'bg-primary shadow-glow' : 'bg-muted'}`} />
                   <span>{site.isInitialized ? 'Ready' : 'Initializing'}</span>
                 </div>
               </div>
@@ -101,7 +101,7 @@ export const SiteCard = ({ site, onUpdate }: SiteCardProps) => {
         <CardFooter className="p-4 pt-0 flex gap-2">
           <Button 
             onClick={handleOpen}
-            className="flex-1 bg-gradient-primary text-primary-foreground hover:opacity-90 transition-opacity"
+            className="flex-1 blueprint-button"
           >
             <ExternalLink className="w-4 h-4 mr-2" />
             Open
@@ -110,7 +110,7 @@ export const SiteCard = ({ site, onUpdate }: SiteCardProps) => {
             variant="outline"
             size="icon"
             onClick={() => setShowRenameDialog(true)}
-            className="hover:bg-accent hover:text-accent-foreground transition-colors"
+            className="blueprint-button-secondary hover:bg-accent/50 hover:text-accent-foreground"
           >
             <Edit className="w-4 h-4" />
           </Button>
@@ -118,7 +118,7 @@ export const SiteCard = ({ site, onUpdate }: SiteCardProps) => {
             variant="outline"
             size="icon"
             onClick={() => setShowDeleteDialog(true)}
-            className="hover:bg-destructive hover:text-destructive-foreground transition-colors"
+            className="blueprint-button-secondary hover:bg-destructive/50 hover:text-destructive-foreground"
           >
             <Trash2 className="w-4 h-4" />
           </Button>
@@ -127,7 +127,7 @@ export const SiteCard = ({ site, onUpdate }: SiteCardProps) => {
 
       {/* Rename Dialog */}
       <Dialog open={showRenameDialog} onOpenChange={setShowRenameDialog}>
-        <DialogContent>
+        <DialogContent className="blueprint-card">
           <DialogHeader>
             <DialogTitle>Rename Site</DialogTitle>
           </DialogHeader>
@@ -144,10 +144,10 @@ export const SiteCard = ({ site, onUpdate }: SiteCardProps) => {
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowRenameDialog(false)}>
+            <Button variant="outline" onClick={() => setShowRenameDialog(false)} className="blueprint-button-secondary">
               Cancel
             </Button>
-            <Button onClick={handleRename} disabled={!newTitle.trim()}>
+            <Button onClick={handleRename} disabled={!newTitle.trim()} className="blueprint-button">
               Rename
             </Button>
           </DialogFooter>
@@ -156,7 +156,8 @@ export const SiteCard = ({ site, onUpdate }: SiteCardProps) => {
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
+        <AlertDialogContent className="blueprint-card"
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Site</AlertDialogTitle>
             <AlertDialogDescription>
