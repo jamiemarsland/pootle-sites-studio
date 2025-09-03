@@ -49,8 +49,8 @@ const Site = () => {
     try {
       console.log(`Opening WordPress for site: ${site.title} (${site.id})`);
 
-      // Create a new window/tab for WordPress Playground
-      const newWindow = window.open('about:blank', `wordpress-${site.id}`, 'width=1200,height=800');
+      // Create a new window for WordPress Playground
+      const newWindow = window.open('', `wordpress-${site.id}`, 'width=1400,height=900,scrollbars=yes,resizable=yes');
       
       if (!newWindow) {
         throw new Error('Failed to open new window. Please allow popups for this site.');
@@ -58,138 +58,95 @@ const Site = () => {
 
       setWordpressWindow(newWindow);
 
-      // Set up the HTML for WordPress Playground
-      newWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>WordPress - ${site.title}</title>
-            <style>
-              body { margin: 0; padding: 0; }
-              #playground { width: 100vw; height: 100vh; border: none; }
-              .loading {
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                height: 100vh;
-                font-family: system-ui, -apple-system, sans-serif;
-                background: #f8fafc;
-              }
-              .spinner {
-                width: 32px;
-                height: 32px;
-                border: 3px solid #e2e8f0;
-                border-top: 3px solid #8b5cf6;
-                border-radius: 50%;
-                animation: spin 1s linear infinite;
-                margin-right: 12px;
-              }
-              @keyframes spin {
-                0% { transform: rotate(0deg); }
-                100% { transform: rotate(360deg); }
-              }
-            </style>
-          </head>
-          <body>
-            <div class="loading" id="loading">
-              <div class="spinner"></div>
-              <div>Loading WordPress...</div>
-            </div>
-            <iframe id="playground" style="display: none;" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"></iframe>
-            <script type="module">
-              import { startPlaygroundWeb } from 'https://playground.wordpress.net/remote.html';
-              
-              const iframe = document.getElementById('playground');
-              const loading = document.getElementById('loading');
-              
-              try {
-                const client = await startPlaygroundWeb({
-                  iframe,
-                  remoteUrl: 'https://playground.wordpress.net/remote.html',
-                  blueprint: {
-                    preferredVersions: {
-                      php: '8.0',
-                      wp: 'latest'
-                    },
-                    steps: [
-                      {
-                        step: 'login',
-                        username: 'admin',
-                        password: 'password'
-                      }
-                    ]
-                  }
-                });
-                
-                console.log('WordPress Playground initialized');
-                loading.style.display = 'none';
-                iframe.style.display = 'block';
-                
-                // Notify parent window that playground is ready
-                window.opener.postMessage({ type: 'playground-ready', siteId: '${site.id}' }, '*');
-                
-              } catch (error) {
-                console.error('Failed to initialize WordPress:', error);
-                loading.innerHTML = '<div style="color: #ef4444;">Failed to load WordPress. Please try again.</div>';
-                window.opener.postMessage({ type: 'playground-error', siteId: '${site.id}', error: error.message }, '*');
-              }
-            </script>
-          </body>
-        </html>
-      `);
+      // Set up the HTML for WordPress Playground using the playground.wordpress.net URL directly
+      const playgroundUrl = new URL('https://playground.wordpress.net/');
       
-      newWindow.document.close();
-
-      // Listen for messages from the WordPress window
-      const handleMessage = async (event: MessageEvent) => {
-        if (event.source !== newWindow) return;
-        
-        if (event.data.type === 'playground-ready' && event.data.siteId === site.id) {
-          console.log('WordPress Playground is ready in new window');
-          
-          // If site is already initialized, we could load from OPFS here
-          if (site.isInitialized) {
-            console.log('Site already initialized, WordPress is ready to use');
-            toast({
-              title: 'WordPress opened',
-              description: `${site.title} is ready in the new tab`,
-            });
-          } else {
-            // First time setup
-            console.log('First time setup completed');
-            updateSite(site.id, { 
-              isInitialized: true,
-              lastModified: new Date().toISOString()
-            });
-            
-            setSite(prev => prev ? { ...prev, isInitialized: true } : null);
-            
-            toast({
-              title: 'WordPress ready',
-              description: `${site.title} has been set up and opened in a new tab`,
-            });
+      // Add configuration parameters
+      playgroundUrl.searchParams.set('blueprint', JSON.stringify({
+        preferredVersions: {
+          php: '8.0',
+          wp: 'latest'
+        },
+        steps: [
+          {
+            step: 'login',
+            username: 'admin',
+            password: 'password'
           }
-          
+        ]
+      }));
+
+      // Navigate to WordPress Playground
+      newWindow.location.href = playgroundUrl.toString();
+
+      // Set up polling to check if window is ready
+      let checkCount = 0;
+      const maxChecks = 30; // 30 seconds max wait time
+      
+      const checkPlayground = () => {
+        checkCount++;
+        
+        if (newWindow.closed) {
+          console.log('WordPress window was closed by user');
+          setWordpressWindow(null);
           setIsInitializing(false);
-        } else if (event.data.type === 'playground-error' && event.data.siteId === site.id) {
-          console.error('WordPress Playground error:', event.data.error);
-          setError('Failed to initialize WordPress');
+          return;
+        }
+        
+        if (checkCount >= maxChecks) {
+          console.log('WordPress Playground took too long to load');
           setIsInitializing(false);
           toast({
-            title: 'WordPress failed to load',
-            description: event.data.error || 'Unknown error occurred',
-            variant: 'destructive',
+            title: 'WordPress ready',
+            description: `${site.title} should be loading in the new tab`,
           });
+          return;
         }
+
+        try {
+          // Try to access the window to see if it's loaded
+          const href = newWindow.location.href;
+          if (href && href.includes('playground.wordpress.net')) {
+            console.log('WordPress Playground loaded successfully');
+            
+            // Mark site as initialized if it's the first time
+            if (!site.isInitialized) {
+              updateSite(site.id, { 
+                isInitialized: true,
+                lastModified: new Date().toISOString()
+              });
+              
+              setSite(prev => prev ? { ...prev, isInitialized: true } : null);
+              
+              toast({
+                title: 'WordPress ready',
+                description: `${site.title} has been set up and opened in a new tab`,
+              });
+            } else {
+              toast({
+                title: 'WordPress opened',
+                description: `${site.title} is ready in the new tab`,
+              });
+            }
+            
+            setIsInitializing(false);
+            return;
+          }
+        } catch (e) {
+          // Cross-origin error expected until playground loads
+        }
+        
+        // Continue checking
+        setTimeout(checkPlayground, 1000);
       };
 
-      window.addEventListener('message', handleMessage);
+      // Start checking after a short delay
+      setTimeout(checkPlayground, 2000);
 
       // Clean up when window is closed
       const checkClosed = setInterval(() => {
         if (newWindow.closed) {
           clearInterval(checkClosed);
-          window.removeEventListener('message', handleMessage);
           setWordpressWindow(null);
           console.log('WordPress window closed');
         }
