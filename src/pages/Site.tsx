@@ -46,31 +46,28 @@ const Site = () => {
 
   const checkOPFSSupport = async () => {
     try {
-      // Check if persistent storage is granted
-      const persistent = await navigator.storage.persist();
-      console.log('Persistent storage granted:', persistent);
-      
-      // Check storage quota
+      // Use centralized helper; avoid noisy warnings for users
+      const granted = await requestPersistentStorage();
+      console.log('Persistent storage granted:', granted);
+
+      // Check storage quota (debug info)
       const quota = await navigator.storage.estimate();
       console.log('Storage quota:', quota);
-      
-      // Test OPFS access
+
+      // Probe OPFS access
       const opfsRoot = await navigator.storage.getDirectory();
       console.log('OPFS access successful:', opfsRoot);
-      
-      if (!persistent) {
-        toast({
-          title: 'Storage Warning',
-          description: 'Browser storage is not persistent. Data may be lost.',
-          variant: 'destructive',
-        });
+
+      // No user-facing warning if not granted; we rely on fallbacks reliably
+      if (!granted) {
+        console.log('Persistent storage not granted; using fallback persistence.');
       }
     } catch (error) {
       console.error('OPFS check failed:', error);
+      // Soft notice only if something is really off; no destructive variant
       toast({
-        title: 'Storage Error', 
-        description: 'Browser does not support persistent storage.',
-        variant: 'destructive',
+        title: 'Storage support limited',
+        description: 'Your browser may not fully support persistence; a fallback will be used.',
       });
     }
   };
