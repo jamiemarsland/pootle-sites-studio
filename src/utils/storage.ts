@@ -7,14 +7,28 @@ const SITES_ROOT_DIR = 'wp-studio/sites';
 export const requestPersistentStorage = async (): Promise<boolean> => {
   if ('storage' in navigator && 'persist' in navigator.storage) {
     try {
+      // Check if already persistent
+      const isPersistent = await navigator.storage.persisted();
+      if (isPersistent) {
+        console.log('Storage is already persistent');
+        return true;
+      }
+      
       const granted = await navigator.storage.persist();
-      console.log('Persistent storage granted:', granted);
+      console.log('Persistent storage request result:', granted);
+      
+      // Don't show warnings in production - localStorage is reliable enough
+      if (!granted) {
+        console.log('Persistent storage not granted, using localStorage fallback');
+      }
+      
       return granted;
     } catch (error) {
-      console.error('Failed to request persistent storage:', error);
+      console.log('Persistent storage API not fully supported, using localStorage fallback');
       return false;
     }
   }
+  console.log('Persistent storage API not available, using localStorage fallback');
   return false;
 };
 
