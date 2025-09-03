@@ -24,6 +24,9 @@ export const SiteCard = ({ site, onUpdate }: SiteCardProps) => {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const handleOpen = () => {
+    console.log('Open button clicked for site:', site.id);
+    console.log('Site data:', site);
+    console.log('Site initialized:', site.isInitialized);
     navigate(`/site/${site.id}`);
   };
 

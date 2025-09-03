@@ -39,7 +39,7 @@ const Dashboard = () => {
         title: newSiteTitle.trim(),
         createdAt: new Date().toISOString(),
         lastModified: new Date().toISOString(),
-        isInitialized: false
+        isInitialized: true // Set to true so the Open button works immediately
       };
 
       addSite(newSite);
