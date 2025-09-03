@@ -245,9 +245,9 @@ const Site = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      {/* Top Bar */}
-      <header className="bg-card border-b border-border px-4 py-2 flex items-center gap-3 shrink-0">
+    <div className="h-screen bg-background flex flex-col overflow-hidden">
+      {/* Top Bar - Minimal height */}
+      <header className="bg-card border-b border-border px-4 py-3 flex items-center gap-3 shrink-0 h-16">
         <Button 
           variant="ghost" 
           size="sm" 
@@ -258,8 +258,8 @@ const Site = () => {
           Back
         </Button>
         
-        <div className="flex-1">
-          <h1 className="font-semibold text-foreground">{site.title}</h1>
+        <div className="flex-1 min-w-0">
+          <h1 className="font-semibold text-foreground truncate">{site.title}</h1>
         </div>
 
         <div className="flex items-center gap-2">
@@ -270,7 +270,7 @@ const Site = () => {
               onClick={handleManualSave}
               className="hover:bg-accent hover:text-accent-foreground"
             >
-              Save Changes
+              Save
             </Button>
           )}
           
@@ -281,28 +281,28 @@ const Site = () => {
             className="hover:bg-accent hover:text-accent-foreground"
           >
             <Plus className="w-4 h-4 mr-2" />
-            New Site
+            New
           </Button>
         </div>
 
         {isInitializing && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="w-4 h-4 animate-spin" />
-            {site.isInitialized ? 'Loading site...' : 'Installing WordPress...'}
+            {site.isInitialized ? 'Loading...' : 'Installing...'}
           </div>
         )}
       </header>
 
-      {/* WordPress Playground */}
-      <div className="flex-1 relative">
+      {/* WordPress Playground - Takes remaining height */}
+      <div className="flex-1 relative overflow-hidden">
         {isInitializing && (
-          <div className="absolute inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-10">
-            <div className="text-center">
+          <div className="absolute inset-0 bg-background/95 backdrop-blur-sm flex items-center justify-center z-50">
+            <div className="text-center p-8 bg-card rounded-lg border shadow-lg">
               <Loader2 className="w-12 h-12 animate-spin mx-auto mb-4 text-primary" />
               <h3 className="text-lg font-semibold mb-2">
                 {site.isInitialized ? 'Loading your WordPress site...' : 'Setting up WordPress...'}
               </h3>
-              <p className="text-muted-foreground">
+              <p className="text-muted-foreground text-sm">
                 {site.isInitialized 
                   ? 'Restoring your content and settings' 
                   : 'This may take a few moments on first launch'
@@ -314,9 +314,14 @@ const Site = () => {
         
         <iframe
           ref={iframeRef}
-          className="w-full h-full border-0"
+          className="w-full h-full border-0 block"
           title={`WordPress - ${site.title}`}
-          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"
+          style={{ 
+            minHeight: '100%',
+            height: '100%',
+            width: '100%'
+          }}
         />
       </div>
     </div>
