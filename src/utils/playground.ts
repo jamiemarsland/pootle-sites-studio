@@ -35,23 +35,91 @@ export const initializePlayground = async (
       initialSyncDirection: isInitialized ? 'opfs-to-memfs' : 'memfs-to-opfs',
     };
 
-    const client = await startPlaygroundWeb({
-      iframe,
-      remoteUrl: `https://playground.wordpress.net/remote.html`,
-      blueprint: PLAYGROUND_CONFIG.blueprint,
-      shouldInstallWordPress: !isInitialized,
-      mounts: isInitialized ? [mountDescriptor] : [],
-    });
+    // Try OPFS first, fallback to localStorage for deployed environments
+    let client;
+    let useOPFS = true;
+    
+    try {
+      client = await startPlaygroundWeb({
+        iframe,
+        remoteUrl: `https://playground.wordpress.net/remote.html`,
+        blueprint: PLAYGROUND_CONFIG.blueprint,
+        shouldInstallWordPress: !isInitialized,
+        mounts: isInitialized ? [mountDescriptor] : [],
+      });
 
-    // Wait until Playground is fully ready
-    if (typeof (client as any).isReady === 'function') {
-      await (client as any).isReady();
-    }
+      // Wait until Playground is fully ready
+      if (typeof (client as any).isReady === 'function') {
+        await (client as any).isReady();
+      }
 
-    // On first launch, mount OPFS after WordPress installs to run memfs -> opfs
-    if (!isInitialized && typeof (client as any).mountOpfs === 'function') {
-      await (client as any).mountOpfs(mountDescriptor);
-      console.log('Mounted OPFS and synced memfs -> OPFS for initial install');
+      // On first launch, mount OPFS after WordPress installs to run memfs -> opfs
+      if (!isInitialized && typeof (client as any).mountOpfs === 'function') {
+        await (client as any).mountOpfs(mountDescriptor);
+        console.log('Mounted OPFS and synced memfs -> OPFS for initial install');
+      }
+    } catch (opfsError) {
+      console.warn('OPFS mount failed, using localStorage fallback:', opfsError);
+      useOPFS = false;
+      
+      // Initialize without OPFS
+      client = await startPlaygroundWeb({
+        iframe,
+        remoteUrl: `https://playground.wordpress.net/remote.html`,
+        blueprint: PLAYGROUND_CONFIG.blueprint,
+        shouldInstallWordPress: !isInitialized,
+      });
+
+      // Wait until ready
+      if (typeof (client as any).isReady === 'function') {
+        await (client as any).isReady();
+      }
+      
+      // Load from localStorage if this is an existing site
+      if (isInitialized) {
+        try {
+          const savedData = localStorage.getItem(`wp_site_${siteId}`);
+          if (savedData) {
+            const { database, files } = JSON.parse(savedData);
+            if (database) {
+              await client.importSQL(database);
+            }
+            if (files) {
+              for (const [path, content] of Object.entries(files)) {
+                await client.writeFile(path, content as string);
+              }
+            }
+            console.log('Restored from localStorage fallback');
+          }
+        } catch (fallbackError) {
+          console.error('localStorage restore failed:', fallbackError);
+        }
+      }
+      
+      // Set up periodic saves for localStorage fallback
+      const saveToLocalStorage = async () => {
+        try {
+          const database = await client.exportSQL();
+          const files: Record<string, string> = {};
+          
+          // Save essential files
+          try {
+            const wpConfig = await client.readFile('/wordpress/wp-config.php');
+            files['/wordpress/wp-config.php'] = wpConfig;
+          } catch (e) {}
+          
+          localStorage.setItem(`wp_site_${siteId}`, JSON.stringify({ database, files }));
+          console.log('Saved to localStorage fallback');
+        } catch (saveError) {
+          console.error('localStorage save failed:', saveError);
+        }
+      };
+      
+      // Save every 30 seconds
+      setInterval(saveToLocalStorage, 30000);
+      
+      // Save on page unload
+      window.addEventListener('beforeunload', saveToLocalStorage);
     }
 
     console.log('WordPress Playground initialized successfully');
