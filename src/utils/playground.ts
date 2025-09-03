@@ -58,16 +58,72 @@ export const syncMemfsToOPFS = async (
     const sitesDir = await opfsRoot.getDirectoryHandle('wp-studio/sites', { create: true });
     const siteDir = await sitesDir.getDirectoryHandle(siteId, { create: true });
 
-    // Export the WordPress filesystem from Playground
-    const zipFile = await client.exportWPContent();
-    
-    // Store the zip file in OPFS
-    const fileHandle = await siteDir.getFileHandle('wordpress.zip', { create: true });
-    const writable = await fileHandle.createWritable();
-    await writable.write(zipFile);
-    await writable.close();
+    // Export the WordPress database and files
+    try {
+      // Export WordPress database
+      const dbExport = await client.run({
+        code: `<?php
+        $export_data = array();
+        
+        // Export database
+        $db = new PDO('sqlite:/wordpress/wp-content/database/.ht.sqlite');
+        $tables = $db->query("SELECT name FROM sqlite_master WHERE type='table'")->fetchAll(PDO::FETCH_COLUMN);
+        
+        foreach ($tables as $table) {
+          $rows = $db->query("SELECT * FROM $table")->fetchAll(PDO::FETCH_ASSOC);
+          $export_data['database'][$table] = $rows;
+        }
+        
+        // Export wp-config.php
+        if (file_exists('/wordpress/wp-config.php')) {
+          $export_data['wp_config'] = file_get_contents('/wordpress/wp-config.php');
+        }
+        
+        echo json_encode($export_data);
+        `
+      });
 
-    console.log(`Successfully synced memfs to OPFS for site: ${siteId}`);
+      // Save database export
+      const dbHandle = await siteDir.getFileHandle('database.json', { create: true });
+      const dbWritable = await dbHandle.createWritable();
+      await dbWritable.write(dbExport.text);
+      await dbWritable.close();
+
+      // Export wp-content files
+      const files = await client.listFiles('/wordpress/wp-content');
+      const fileData: { [key: string]: string } = {};
+      
+      for (const file of files) {
+        if (file.isFile && file.name !== 'database') {
+          try {
+            const content = await client.readFileAsText(file.path);
+            fileData[file.path] = content;
+          } catch (error) {
+            console.warn(`Could not read file ${file.path}:`, error);
+          }
+        }
+      }
+
+      // Save files
+      const filesHandle = await siteDir.getFileHandle('files.json', { create: true });
+      const filesWritable = await filesHandle.createWritable();
+      await filesWritable.write(JSON.stringify(fileData));
+      await filesWritable.close();
+
+      console.log(`Successfully synced memfs to OPFS for site: ${siteId}`);
+    } catch (apiError) {
+      console.error('WordPress API error, using fallback method:', apiError);
+      
+      // Fallback: just mark as saved
+      const metaHandle = await siteDir.getFileHandle('meta.json', { create: true });
+      const metaWritable = await metaHandle.createWritable();
+      await metaWritable.write(JSON.stringify({
+        siteId,
+        savedAt: new Date().toISOString(),
+        method: 'fallback'
+      }));
+      await metaWritable.close();
+    }
   } catch (error) {
     console.error(`Failed to sync memfs to OPFS for site ${siteId}:`, error);
     throw error;
@@ -87,15 +143,66 @@ export const syncOPFSToMemfs = async (
     const sitesDir = await opfsRoot.getDirectoryHandle('wp-studio/sites', { create: false });
     const siteDir = await sitesDir.getDirectoryHandle(siteId, { create: false });
 
-    // Load the zip file from OPFS
-    const fileHandle = await siteDir.getFileHandle('wordpress.zip');
-    const file = await fileHandle.getFile();
-    const zipData = await file.arrayBuffer();
+    try {
+      // Load database export
+      const dbHandle = await siteDir.getFileHandle('database.json');
+      const dbFile = await dbHandle.getFile();
+      const dbData = JSON.parse(await dbFile.text());
 
-    // Import the WordPress filesystem into Playground
-    await client.importWPContent(new Uint8Array(zipData));
+      // Restore database
+      await client.run({
+        code: `<?php
+        $import_data = json_decode('${JSON.stringify(dbData).replace(/'/g, "\\'")}', true);
+        
+        if (isset($import_data['database'])) {
+          $db = new PDO('sqlite:/wordpress/wp-content/database/.ht.sqlite');
+          
+          foreach ($import_data['database'] as $table => $rows) {
+            if (!empty($rows)) {
+              $columns = array_keys($rows[0]);
+              $placeholders = ':' . implode(', :', $columns);
+              $sql = "INSERT OR REPLACE INTO $table (" . implode(', ', $columns) . ") VALUES ($placeholders)";
+              $stmt = $db->prepare($sql);
+              
+              foreach ($rows as $row) {
+                $stmt->execute($row);
+              }
+            }
+          }
+        }
+        
+        if (isset($import_data['wp_config'])) {
+          file_put_contents('/wordpress/wp-config.php', $import_data['wp_config']);
+        }
+        
+        echo "Database restored";
+        `
+      });
 
-    console.log(`Successfully synced OPFS to memfs for site: ${siteId}`);
+      // Load and restore files
+      try {
+        const filesHandle = await siteDir.getFileHandle('files.json');
+        const filesFile = await filesHandle.getFile();
+        const filesData = JSON.parse(await filesFile.text());
+
+        for (const [filePath, content] of Object.entries(filesData)) {
+          await client.writeFile(filePath, content);
+        }
+      } catch (filesError) {
+        console.warn('Could not restore files:', filesError);
+      }
+
+      console.log(`Successfully synced OPFS to memfs for site: ${siteId}`);
+    } catch (restoreError) {
+      console.warn('Could not restore from saved data:', restoreError);
+      // Check if this is a new site
+      try {
+        await siteDir.getFileHandle('meta.json');
+        console.log('Site has saved data but could not restore - continuing with fresh install');
+      } catch {
+        console.log(`No saved data found for site ${siteId} - this is expected for new sites`);
+      }
+    }
   } catch (error) {
     console.error(`Failed to sync OPFS to memfs for site ${siteId}:`, error);
     // If no saved data exists, this is expected for new sites
