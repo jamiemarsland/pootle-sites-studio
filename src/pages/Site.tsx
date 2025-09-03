@@ -26,6 +26,7 @@ const Site = () => {
     }
 
     loadSite();
+    checkOPFSSupport();
   }, [siteId, navigate]);
 
   useEffect(() => {
@@ -42,6 +43,37 @@ const Site = () => {
       }
     };
   }, []);
+
+  const checkOPFSSupport = async () => {
+    try {
+      // Check if persistent storage is granted
+      const persistent = await navigator.storage.persist();
+      console.log('Persistent storage granted:', persistent);
+      
+      // Check storage quota
+      const quota = await navigator.storage.estimate();
+      console.log('Storage quota:', quota);
+      
+      // Test OPFS access
+      const opfsRoot = await navigator.storage.getDirectory();
+      console.log('OPFS access successful:', opfsRoot);
+      
+      if (!persistent) {
+        toast({
+          title: 'Storage Warning',
+          description: 'Browser storage is not persistent. Data may be lost.',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      console.error('OPFS check failed:', error);
+      toast({
+        title: 'Storage Error', 
+        description: 'Browser does not support persistent storage.',
+        variant: 'destructive',
+      });
+    }
+  };
 
   const loadSite = () => {
     const metadata = getSiteMetadata();
@@ -75,6 +107,11 @@ const Site = () => {
 
       setPlaygroundClient(client);
 
+      // Add diagnostics to check if mount worked
+      setTimeout(async () => {
+        await diagnoseMountStatus(client, site.id);
+      }, 3000);
+
       if (!site.isInitialized) {
         // Mark site as initialized after first OPFS sync
         updateSite(site.id, { 
@@ -91,8 +128,15 @@ const Site = () => {
         toast({ title: 'Site loaded', description: 'Restored from OPFS' });
       }
 
-      // With OPFS mounted at /wordpress, Playground automatically syncs the
-      // filesystem at the end of every PHP request. No manual saves required.
+      // Set up periodic OPFS diagnostics 
+      const diagnosticInterval = setInterval(async () => {
+        await checkOPFSContents(site.id);
+      }, 60000); // Check every minute
+
+      // Cleanup diagnostics on component unmount
+      return () => {
+        clearInterval(diagnosticInterval);
+      };
 
     } catch (error) {
       console.error('Failed to initialize WordPress:', error);
@@ -107,14 +151,104 @@ const Site = () => {
     }
   };
 
+  const diagnoseMountStatus = async (client: any, siteId: string) => {
+    try {
+      console.log('=== OPFS Mount Diagnostics ===');
+      
+      // Check if client has mount info
+      if (client.getMountedDirectories) {
+        const mounts = await client.getMountedDirectories();
+        console.log('Mounted directories:', mounts);
+      }
+      
+      // Test if we can access the WordPress directory
+      if (client.listFiles) {
+        const files = await client.listFiles('/wordpress');
+        console.log('WordPress directory contents:', files);
+      }
+      
+      // Check OPFS contents directly
+      await checkOPFSContents(siteId);
+      
+    } catch (error) {
+      console.error('Mount diagnosis failed:', error);
+    }
+  };
+
+  const checkOPFSContents = async (siteId: string) => {
+    try {
+      console.log('=== OPFS Contents Check ===');
+      const opfsRoot = await navigator.storage.getDirectory();
+      const sitesDir = await opfsRoot.getDirectoryHandle('wp-studio/sites', { create: false });
+      const siteDir = await sitesDir.getDirectoryHandle(siteId, { create: false });
+      
+      console.log('Site directory exists in OPFS');
+      
+      // List all files in the site directory
+      const entries = [];
+      for await (const [name, handle] of (siteDir as any).entries()) {
+        entries.push({ name, type: handle.kind });
+      }
+      console.log('OPFS site directory contents:', entries);
+      
+      // If there are files, show file sizes
+      for (const entry of entries) {
+        if (entry.type === 'file') {
+          try {
+            const fileHandle = await siteDir.getFileHandle(entry.name);
+            const file = await fileHandle.getFile();
+            console.log(`${entry.name}: ${file.size} bytes, modified: ${file.lastModified}`);
+          } catch (e) {
+            console.warn(`Could not read ${entry.name}:`, e);
+          }
+        }
+      }
+      
+    } catch (error) {
+      console.log('OPFS contents check failed (may be normal for new sites):', error);
+    }
+  };
+
+  const forceFlushToOPFS = async () => {
+    if (!playgroundClient || !site) return;
+    
+    try {
+      console.log('=== Forcing OPFS Flush ===');
+      
+      // Try to trigger a manual sync if the API exists
+      if (playgroundClient.flushOpfs) {
+        await playgroundClient.flushOpfs();
+        console.log('OPFS flush completed');
+      } else if (playgroundClient.run) {
+        // Force a PHP request to trigger auto-sync
+        await playgroundClient.run({
+          code: '<?php echo "Triggering OPFS sync"; ?>'
+        });
+        console.log('Triggered PHP request for OPFS sync');
+      }
+      
+      // Check contents after flush
+      setTimeout(() => checkOPFSContents(site.id), 1000);
+      
+      toast({
+        title: 'Sync forced',
+        description: 'Manually triggered OPFS synchronization',
+      });
+      
+    } catch (error) {
+      console.error('Force flush failed:', error);
+      toast({
+        title: 'Sync failed',
+        description: 'Could not force OPFS synchronization',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const handleManualSave = async () => {
     if (playgroundClient && site?.isInitialized) {
+      await forceFlushToOPFS();
       updateSite(site.id, { lastModified: new Date().toISOString() });
-      toast({
-        title: 'Saved',
-        description: 'Changes are persisted automatically to OPFS.',
-      });
-      console.log('Manual save triggered (OPFS auto-sync)');
     }
   };
 
@@ -173,14 +307,24 @@ const Site = () => {
 
         <div className="flex items-center gap-2">
           {playgroundClient && site?.isInitialized && (
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={handleManualSave}
-              className="hover:bg-accent hover:text-accent-foreground"
-            >
-              Save
-            </Button>
+            <>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleManualSave}
+                className="hover:bg-accent hover:text-accent-foreground"
+              >
+                Force Sync
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => checkOPFSContents(site.id)}
+                className="hover:bg-accent hover:text-accent-foreground"
+              >
+                Check OPFS
+              </Button>
+            </>
           )}
           
           <Button 
