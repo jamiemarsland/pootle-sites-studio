@@ -136,15 +136,34 @@ const Site = () => {
 require_once '/wordpress/wp-config.php';
 update_option('blogname', ${JSON.stringify(site.title)});
 update_option('blogdescription', 'A Pootle site');
+
+// Force refresh WordPress caches
+wp_cache_flush();
+if (function_exists('opcache_reset')) {
+    opcache_reset();
+}
+
+// Also update the admin bar title immediately
+add_filter('admin_title', function($admin_title, $title) {
+    return ${JSON.stringify(site.title)} . ' — WordPress';
+}, 10, 2);
+
 echo 'Site title updated to: ' . get_option('blogname');
 ?>`;
 
           const result = await client.run({ code: phpCode });
-          console.log('Site name synced to WordPress:', site.title, result);
+          console.log('Site name synced to WordPress with cache flush:', site.title, result);
+          
+          // Also try to refresh the iframe to show the new title
+          if (iframeRef.current) {
+            const iframe = iframeRef.current;
+            // Send a message to refresh the admin bar
+            iframe.contentWindow?.postMessage({ type: 'refresh_title' }, '*');
+          }
         } catch (error) {
           console.warn('Failed to sync site name after delay:', error);
         }
-      }, 2000); // Wait 2 seconds for WordPress to be ready
+      }, 3000); // Wait 3 seconds for WordPress to be fully ready
 
       // Add diagnostics to check if mount worked (debug mode only)
       if (isDebugMode) {
