@@ -79,7 +79,7 @@ const Dashboard = () => {
                 <h1 className="text-2xl font-bold text-foreground">
                   Pootle Sites
                 </h1>
-                <p className="text-xs text-muted-foreground">WordPress Studio</p>
+                <p className="text-xs text-muted-foreground">A WordPress Playground experiment</p>
               </div>
             </div>
             <Button 
