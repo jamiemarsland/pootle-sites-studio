@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { SiteCard } from '@/components/SiteCard';
-import { StorageIndicator } from '@/components/StorageIndicator';
+
 import { Site } from '@/types/site';
 import { getSiteMetadata, addSite, generateSiteId, requestPersistentStorage } from '@/utils/storage';
 import { Plus } from 'lucide-react';
@@ -81,7 +81,7 @@ const Dashboard = () => {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <StorageIndicator />
+              
               {sites.length > 0 && (
                 <Button 
                   onClick={() => setShowNewSiteDialog(true)}
