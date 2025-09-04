@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Loader2, AlertCircle, ExternalLink, Plus } from 'lucide-react';
+import { ArrowLeft, Loader2, AlertCircle, ExternalLink, Plus, ChevronDown } from 'lucide-react';
 import { getSiteMetadata, updateSite, requestPersistentStorage } from '@/utils/storage';
 import { initializePlayground } from '@/utils/playground';
 import { Site as SiteType } from '@/types/site';
@@ -348,10 +348,25 @@ const Site = () => {
     <div className="h-screen bg-background flex flex-col overflow-hidden relative">
       {/* Reveal Strip - Invisible hover area at top */}
       <div 
-        className="absolute top-0 left-0 right-0 h-2 z-50 cursor-pointer"
+        className={`absolute top-0 left-0 right-0 h-2 z-50 cursor-pointer ${chromeHidden ? 'bg-gradient-to-b from-foreground/10 to-transparent' : ''}`}
         onMouseEnter={handleRevealStripHover}
         title="Hover to show controls (or press Escape)"
       />
+
+      {/* Visible Reveal Tab */}
+      {chromeHidden && !isInitializing && (
+        <button
+          type="button"
+          className="fixed top-0 left-1/2 -translate-x-1/2 z-50 mt-1 flex items-center gap-2 rounded-b-xl bg-card/90 backdrop-blur border border-border px-3 py-1 text-xs sm:text-sm text-foreground shadow-md hover:bg-accent hover:text-accent-foreground transition-colors"
+          onMouseEnter={handleRevealStripHover}
+          onClick={handleRevealStripHover}
+          aria-label="Show controls"
+        >
+          <ChevronDown className="h-4 w-4" aria-hidden="true" />
+          <span className="hidden sm:inline">Show controls</span>
+        </button>
+      )}
+
       
       {/* Top Bar - Auto-hiding with smooth transitions */}
       <header 
