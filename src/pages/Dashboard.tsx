@@ -70,7 +70,7 @@ const Dashboard = () => {
       {/* Header */}
       <header className="border-b border-border/30 bg-card/80 backdrop-blur-md sticky top-0 z-10 shadow-blueprint">
         <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center">
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div>
                 <h1 className="text-2xl font-bold text-foreground">
@@ -79,6 +79,15 @@ const Dashboard = () => {
                 <p className="text-xs text-muted-foreground">A WordPress Playground experiment</p>
               </div>
             </div>
+            {sites.length > 0 && (
+              <Button 
+                onClick={() => setShowNewSiteDialog(true)}
+                className="blueprint-button"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                New Site
+              </Button>
+            )}
           </div>
         </div>
       </header>
