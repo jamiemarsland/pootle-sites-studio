@@ -18,6 +18,11 @@ export const getStorageInfo = async (): Promise<StorageInfo> => {
   }
 
   try {
+    // Force a more accurate estimate by accessing OPFS first
+    try {
+      await navigator.storage.getDirectory();
+    } catch {}
+    
     const [estimate, isPersistent] = await Promise.all([
       navigator.storage.estimate(),
       navigator.storage.persisted?.() || Promise.resolve(false),

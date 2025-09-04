@@ -17,10 +17,18 @@ export const StorageIndicator = () => {
 
     updateStorageInfo();
     
-    // Update every 60 seconds
-    const interval = setInterval(updateStorageInfo, 60000);
+    // Update every 10 seconds initially, then every 60 seconds
+    const quickInterval = setInterval(updateStorageInfo, 10000);
+    const slowInterval = setTimeout(() => {
+      clearInterval(quickInterval);
+      const interval = setInterval(updateStorageInfo, 60000);
+      return () => clearInterval(interval);
+    }, 60000);
     
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(quickInterval);
+      clearTimeout(slowInterval);
+    };
   }, []);
 
   if (!storageInfo?.isSupported) {
