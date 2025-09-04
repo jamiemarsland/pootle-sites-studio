@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { SiteCard } from '@/components/SiteCard';
 import { Site } from '@/types/site';
 import { getSiteMetadata, addSite, generateSiteId, requestPersistentStorage } from '@/utils/storage';
-import { Plus, Zap } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const Dashboard = () => {
@@ -72,9 +72,6 @@ const Dashboard = () => {
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center shadow-glow">
-                <Zap className="w-5 h-5 text-primary-foreground" />
-              </div>
               <div>
                 <h1 className="text-2xl font-bold text-foreground">
                   Pootle Sites
