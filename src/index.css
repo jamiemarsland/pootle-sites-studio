@@ -50,9 +50,9 @@ All colors MUST be HSL.
 
     /* Blueprint grid pattern */
     --blueprint-grid: 
-      linear-gradient(rgba(59, 130, 246, 0.1) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(59, 130, 246, 0.1) 1px, transparent 1px);
-    --blueprint-grid-size: 20px 20px;
+      linear-gradient(rgba(59, 130, 246, 0.2) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(59, 130, 246, 0.2) 1px, transparent 1px);
+    --blueprint-grid-size: 24px 24px;
 
     /* Enhanced shadows for blueprint depth */
     --shadow-elegant: 0 10px 30px -10px hsl(var(--primary) / 0.3);
@@ -118,9 +118,9 @@ All colors MUST be HSL.
 
     /* Blueprint dark grid */
     --blueprint-grid: 
-      linear-gradient(rgba(59, 130, 246, 0.15) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(59, 130, 246, 0.15) 1px, transparent 1px);
-    --blueprint-grid-size: 20px 20px;
+      linear-gradient(rgba(59, 130, 246, 0.25) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(59, 130, 246, 0.25) 1px, transparent 1px);
+    --blueprint-grid-size: 24px 24px;
 
     /* Blueprint dark shadows */
     --shadow-elegant: 0 10px 30px -10px hsl(0 0% 0% / 0.5);
