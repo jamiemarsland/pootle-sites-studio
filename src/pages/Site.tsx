@@ -359,7 +359,7 @@ const Site = () => {
           type="button"
           className="fixed top-0 left-1/2 -translate-x-1/2 z-50 mt-0.5 flex items-center gap-1 rounded-b-lg bg-card/90 backdrop-blur border border-border px-2 py-0.5 text-xs text-foreground shadow-md hover:bg-accent hover:text-accent-foreground transition-colors"
           onMouseEnter={handleRevealStripHover}
-          onClick={handleRevealStripHover}
+          onClick={handleBack}
           aria-label="Back to Pootle Sites"
         >
           <ChevronDown className="h-3 w-3" aria-hidden="true" />
