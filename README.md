@@ -60,6 +60,19 @@ This project is built with:
 - shadcn-ui
 - Tailwind CSS
 
+## Debug Mode
+
+For debugging WordPress sites, you can enable debug mode to show additional buttons and diagnostic information:
+
+- **Development**: Debug mode is automatically enabled when running `npm run dev`
+- **Production**: Add `?debug=1` to any URL (e.g., `https://yoursite.com/?debug=1`)
+- **Environment**: Set `VITE_SHOW_DEBUG=true` in your environment
+
+Debug mode reveals:
+- "Force Sync" button to manually trigger OPFS synchronization
+- "Check OPFS" button to inspect persistent storage contents
+- Additional console logging for troubleshooting
+
 ## How can I deploy this project?
 
 Simply open [Lovable](https://lovable.dev/projects/b0be8343-432a-4c3b-bad7-aa55d20d6981) and click on Share -> Publish.

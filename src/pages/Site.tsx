@@ -19,6 +19,11 @@ const Site = () => {
   const [playgroundClient, setPlaygroundClient] = useState<any>(null);
   const autoSaveIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Debug mode detection
+  const isDebugMode = import.meta.env.DEV || 
+                     import.meta.env.VITE_SHOW_DEBUG === 'true' || 
+                     new URLSearchParams(window.location.search).has('debug');
+
   useEffect(() => {
     if (!siteId) {
       navigate('/');
@@ -104,10 +109,12 @@ const Site = () => {
 
       setPlaygroundClient(client);
 
-      // Add diagnostics to check if mount worked
-      setTimeout(async () => {
-        await diagnoseMountStatus(client, site.id);
-      }, 3000);
+      // Add diagnostics to check if mount worked (debug mode only)
+      if (isDebugMode) {
+        setTimeout(async () => {
+          await diagnoseMountStatus(client, site.id);
+        }, 3000);
+      }
 
       if (!site.isInitialized) {
         // Mark site as initialized after first OPFS sync
@@ -125,15 +132,17 @@ const Site = () => {
         toast({ title: 'Site loaded', description: 'Restored from OPFS' });
       }
 
-      // Set up periodic OPFS diagnostics 
-      const diagnosticInterval = setInterval(async () => {
-        await checkOPFSContents(site.id);
-      }, 60000); // Check every minute
+      // Set up periodic OPFS diagnostics (debug mode only)
+      if (isDebugMode) {
+        const diagnosticInterval = setInterval(async () => {
+          await checkOPFSContents(site.id);
+        }, 60000); // Check every minute
 
-      // Cleanup diagnostics on component unmount
-      return () => {
-        clearInterval(diagnosticInterval);
-      };
+        // Cleanup diagnostics on component unmount
+        return () => {
+          clearInterval(diagnosticInterval);
+        };
+      }
 
     } catch (error) {
       console.error('Failed to initialize WordPress:', error);
@@ -303,7 +312,7 @@ const Site = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          {playgroundClient && site?.isInitialized && (
+          {playgroundClient && site?.isInitialized && isDebugMode && (
             <>
               <Button 
                 variant="outline" 
