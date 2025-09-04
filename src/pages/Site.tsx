@@ -129,22 +129,21 @@ const Site = () => {
 
       setPlaygroundClient(client);
 
-      // Wait for WordPress to fully load, then sync the site name
-      setTimeout(async () => {
+      // Update site title with fast retry mechanism
+      const updateSiteTitle = async (attempt = 1) => {
         try {
           const phpCode = `<?php
 require_once '/wordpress/wp-load.php';
 update_option('blogname', ${JSON.stringify(site.title)});
 update_option('blogdescription', 'A Pootle site');
 wp_cache_flush();
-
 echo get_option('blogname');
 ?>`;
 
           const result = await client.run({ code: phpCode });
           console.log('Site name synced to WordPress:', site.title, result);
 
-          // SQLite fallback to ensure option is updated even if WP APIs fail
+          // SQLite fallback to ensure option is updated
           try {
             const sqliteCode = `<?php\ntry {\n  $db = new PDO('sqlite:/wordpress/wp-content/database/.ht.sqlite');\n  $stmt = $db->prepare("UPDATE wp_options SET option_value = :title WHERE option_name = 'blogname'");\n  $stmt->execute([':title' => ${JSON.stringify(site.title)}]);\n  echo 'ok';\n} catch (Exception $e) { echo 'err'; }\n?>`;
             await client.run({ code: sqliteCode });
@@ -159,9 +158,16 @@ echo get_option('blogname');
             console.warn('Failed to refresh Playground view:', navErr);
           }
         } catch (error) {
-          console.warn('Failed to sync site name after delay:', error);
+          console.warn(`Failed to sync site name (attempt ${attempt}):`, error);
+          // Retry up to 3 times with increasing delays
+          if (attempt < 3) {
+            setTimeout(() => updateSiteTitle(attempt + 1), attempt * 500);
+          }
         }
-      }, 3000); // Wait 3 seconds for WordPress to be fully ready
+      };
+
+      // Start immediately, then retry if needed
+      setTimeout(() => updateSiteTitle(), 300);
 
       // Add diagnostics to check if mount worked (debug mode only)
       if (isDebugMode) {
