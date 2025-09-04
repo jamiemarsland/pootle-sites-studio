@@ -129,17 +129,14 @@ const Site = () => {
 
       setPlaygroundClient(client);
 
-      // Sync the site name to WordPress
+      // Sync the site name to WordPress (write directly to SQLite 'wp_options')
       try {
-        await client.run({
-          code: `<?php
-            update_option('blogname', '${site.title.replace(/'/g, "\\'")}');
-            update_option('blogdescription', 'A Pootle site');
-          ?>`
-        });
-        console.log('Site name synced to WordPress:', site.title);
+        const phpCode = `<?php\n$title = ${JSON.stringify(site.title)};\ntry {\n  $db = new PDO('sqlite:/wordpress/wp-content/database/.ht.sqlite');\n  // Default table prefix is 'wp_' in Playground\n  $stmt = $db->prepare("UPDATE wp_options SET option_value = :title WHERE option_name = 'blogname'");\n  $stmt->execute([':title' => $title]);\n  echo 'ok';\n} catch (Exception $e) {\n  echo 'err: ' . $e->getMessage();\n}\n?>`;
+
+        await client.run({ code: phpCode });
+        console.log('Site name synced to WordPress via SQLite:', site.title);
       } catch (error) {
-        console.warn('Failed to sync site name to WordPress:', error);
+        console.warn('Failed to sync site name (SQLite method):', error);
       }
 
       // Add diagnostics to check if mount worked (debug mode only)
