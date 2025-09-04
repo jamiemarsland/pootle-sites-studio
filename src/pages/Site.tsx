@@ -18,6 +18,7 @@ const Site = () => {
   const [error, setError] = useState<string | null>(null);
   const [playgroundClient, setPlaygroundClient] = useState<any>(null);
   const autoSaveIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [isTitleSyncing, setIsTitleSyncing] = useState(true);
   const [isBarHidden, setIsBarHidden] = useState(() => {
     return localStorage.getItem('pootle-bar-hidden') === 'true';
   });
@@ -157,11 +158,17 @@ echo get_option('blogname');
           } catch (navErr) {
             console.warn('Failed to refresh Playground view:', navErr);
           }
+
+          // Title sync complete - fade out loading overlay
+          setTimeout(() => setIsTitleSyncing(false), 500);
         } catch (error) {
           console.warn(`Failed to sync site name (attempt ${attempt}):`, error);
           // Retry up to 3 times with increasing delays
           if (attempt < 3) {
             setTimeout(() => updateSiteTitle(attempt + 1), attempt * 500);
+          } else {
+            // Give up after 3 attempts - fade out anyway
+            setTimeout(() => setIsTitleSyncing(false), 500);
           }
         }
       };
@@ -426,10 +433,20 @@ echo get_option('blogname');
             </div>
           </div>
         )}
+
+        {/* Title Sync Overlay - smooth fade out when title is ready */}
+        {isTitleSyncing && !isInitializing && (
+          <div className="absolute inset-0 bg-background/60 backdrop-blur-sm flex items-center justify-center z-40 animate-fade-in">
+            <div className="text-center p-6 bg-card/90 rounded-lg border shadow-lg">
+              <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+              <p className="text-sm text-muted-foreground">Setting up "{site.title}"...</p>
+            </div>
+          </div>
+        )}
         
         <iframe
           ref={iframeRef}
-          className="w-full h-full border-0 block"
+          className={`w-full h-full border-0 block transition-opacity duration-500 ${isTitleSyncing ? 'opacity-50' : 'opacity-100'}`}
           title={`WordPress - ${site.title}`}
           sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"
           style={{ 
