@@ -129,15 +129,22 @@ const Site = () => {
 
       setPlaygroundClient(client);
 
-      // Sync the site name to WordPress (write directly to SQLite 'wp_options')
-      try {
-        const phpCode = `<?php\n$title = ${JSON.stringify(site.title)};\ntry {\n  $db = new PDO('sqlite:/wordpress/wp-content/database/.ht.sqlite');\n  // Default table prefix is 'wp_' in Playground\n  $stmt = $db->prepare("UPDATE wp_options SET option_value = :title WHERE option_name = 'blogname'");\n  $stmt->execute([':title' => $title]);\n  echo 'ok';\n} catch (Exception $e) {\n  echo 'err: ' . $e->getMessage();\n}\n?>`;
+      // Wait for WordPress to fully load, then sync the site name
+      setTimeout(async () => {
+        try {
+          const phpCode = `<?php
+require_once '/wordpress/wp-config.php';
+update_option('blogname', ${JSON.stringify(site.title)});
+update_option('blogdescription', 'A Pootle site');
+echo 'Site title updated to: ' . get_option('blogname');
+?>`;
 
-        await client.run({ code: phpCode });
-        console.log('Site name synced to WordPress via SQLite:', site.title);
-      } catch (error) {
-        console.warn('Failed to sync site name (SQLite method):', error);
-      }
+          const result = await client.run({ code: phpCode });
+          console.log('Site name synced to WordPress:', site.title, result);
+        } catch (error) {
+          console.warn('Failed to sync site name after delay:', error);
+        }
+      }, 2000); // Wait 2 seconds for WordPress to be ready
 
       // Add diagnostics to check if mount worked (debug mode only)
       if (isDebugMode) {
