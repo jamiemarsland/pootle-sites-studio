@@ -124,7 +124,8 @@ const Site = () => {
       const client = await initializePlayground(
         iframeRef.current,
         site.id,
-        site.isInitialized
+        site.isInitialized,
+        site.title
       );
 
       setPlaygroundClient(client);
@@ -133,32 +134,30 @@ const Site = () => {
       setTimeout(async () => {
         try {
           const phpCode = `<?php
-require_once '/wordpress/wp-config.php';
+require_once '/wordpress/wp-load.php';
 update_option('blogname', ${JSON.stringify(site.title)});
 update_option('blogdescription', 'A Pootle site');
-
-// Force refresh WordPress caches
 wp_cache_flush();
-if (function_exists('opcache_reset')) {
-    opcache_reset();
-}
 
-// Also update the admin bar title immediately
-add_filter('admin_title', function($admin_title, $title) {
-    return ${JSON.stringify(site.title)} . ' — WordPress';
-}, 10, 2);
-
-echo 'Site title updated to: ' . get_option('blogname');
+echo get_option('blogname');
 ?>`;
 
           const result = await client.run({ code: phpCode });
-          console.log('Site name synced to WordPress with cache flush:', site.title, result);
-          
-          // Also try to refresh the iframe to show the new title
-          if (iframeRef.current) {
-            const iframe = iframeRef.current;
-            // Send a message to refresh the admin bar
-            iframe.contentWindow?.postMessage({ type: 'refresh_title' }, '*');
+          console.log('Site name synced to WordPress:', site.title, result);
+
+          // SQLite fallback to ensure option is updated even if WP APIs fail
+          try {
+            const sqliteCode = `<?php\ntry {\n  $db = new PDO('sqlite:/wordpress/wp-content/database/.ht.sqlite');\n  $stmt = $db->prepare("UPDATE wp_options SET option_value = :title WHERE option_name = 'blogname'");\n  $stmt->execute([':title' => ${JSON.stringify(site.title)}]);\n  echo 'ok';\n} catch (Exception $e) { echo 'err'; }\n?>`;
+            await client.run({ code: sqliteCode });
+          } catch (_) {}
+
+          // Navigate inside the Playground to force UI refresh
+          try {
+            if (typeof (client as any).goTo === 'function') {
+              await (client as any).goTo('/?t=' + Date.now());
+            }
+          } catch (navErr) {
+            console.warn('Failed to refresh Playground view:', navErr);
           }
         } catch (error) {
           console.warn('Failed to sync site name after delay:', error);

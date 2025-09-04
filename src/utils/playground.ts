@@ -21,7 +21,8 @@ export const PLAYGROUND_CONFIG = {
 export const initializePlayground = async (
   iframe: HTMLIFrameElement,
   siteId: string,
-  isInitialized: boolean
+  isInitialized: boolean,
+  siteTitle?: string
 ): Promise<any> => {
   try {
     console.log(`Initializing WordPress Playground for site: ${siteId}`);
@@ -35,7 +36,17 @@ export const initializePlayground = async (
       initialSyncDirection: isInitialized ? 'opfs-to-memfs' : 'memfs-to-opfs',
     };
 
-    // Try OPFS first, fallback to localStorage for deployed environments
+    // Build a dynamic blueprint so brand-new installs get the chosen title immediately
+    const dynamicBlueprint = {
+      preferredVersions: PLAYGROUND_CONFIG.blueprint.preferredVersions,
+      steps: [
+        { step: 'login', username: 'admin', password: 'password' },
+        ...(!isInitialized && siteTitle ? [{
+          step: 'php',
+          code: `<?php require '/wordpress/wp-load.php'; update_option('blogname', ${JSON.stringify(siteTitle)}); ?>`
+        }] : [])
+      ]
+    } as const;
     let client;
     let useOPFS = true;
     
@@ -43,7 +54,7 @@ export const initializePlayground = async (
       client = await startPlaygroundWeb({
         iframe,
         remoteUrl: `https://playground.wordpress.net/remote.html`,
-        blueprint: PLAYGROUND_CONFIG.blueprint,
+        blueprint: dynamicBlueprint,
         shouldInstallWordPress: !isInitialized,
         mounts: isInitialized ? [mountDescriptor] : [],
       });
@@ -66,7 +77,7 @@ export const initializePlayground = async (
       client = await startPlaygroundWeb({
         iframe,
         remoteUrl: `https://playground.wordpress.net/remote.html`,
-        blueprint: PLAYGROUND_CONFIG.blueprint,
+        blueprint: dynamicBlueprint,
         shouldInstallWordPress: !isInitialized,
       });
 
