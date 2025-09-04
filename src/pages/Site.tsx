@@ -307,65 +307,8 @@ const Site = () => {
         <span>Back to Pootle Sites</span>
       </button>
 
-      {/* Top Bar - Always visible */}
-      <header className="bg-card border-b border-border px-4 py-3 flex items-center gap-3 shrink-0 h-16">
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          onClick={handleBack}
-          className="hover:bg-accent hover:text-accent-foreground"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back
-        </Button>
-        
-        <div className="flex-1 min-w-0">
-          <h1 className="font-semibold text-foreground truncate">{site.title}</h1>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {playgroundClient && site?.isInitialized && isDebugMode && (
-            <>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={handleManualSave}
-                className="hover:bg-accent hover:text-accent-foreground"
-              >
-                Force Sync
-              </Button>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => checkOPFSContents(site.id)}
-                className="hover:bg-accent hover:text-accent-foreground"
-              >
-                Check OPFS
-              </Button>
-            </>
-          )}
-          
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => navigate('/')}
-            className="hover:bg-accent hover:text-accent-foreground"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            New
-          </Button>
-        </div>
-
-        {isInitializing && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            {site.isInitialized ? 'Loading...' : 'Installing...'}
-          </div>
-        )}
-      </header>
-
-      {/* WordPress Playground - Takes remaining height */}
-      <div className="flex-1 relative overflow-hidden mt-0">
+      {/* WordPress Playground - Takes full height */}
+      <div className="flex-1 relative overflow-hidden">
         {isInitializing && (
           <div className="absolute inset-0 bg-background/95 backdrop-blur-sm flex items-center justify-center z-50">
             <div className="text-center p-8 bg-card rounded-lg border shadow-lg">
