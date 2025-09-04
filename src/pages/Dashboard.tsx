@@ -8,7 +8,6 @@ import { Site } from '@/types/site';
 import { getSiteMetadata, addSite, generateSiteId, requestPersistentStorage } from '@/utils/storage';
 import { Plus, Zap } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import heroImage from '@/assets/pootle-hero.jpg';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -99,14 +98,6 @@ const Dashboard = () => {
         {sites.length === 0 ? (
           /* Empty State */
           <div className="text-center py-16">
-            <div className="relative mx-auto mb-8 w-64 h-36 rounded-lg overflow-hidden blueprint-card">
-              <img 
-                src={heroImage} 
-                alt="Pootle Sites" 
-                className="w-full h-full object-cover opacity-80"
-              />
-              <div className="absolute inset-0 bg-gradient-primary/20" />
-            </div>
             <h2 className="text-3xl font-bold text-foreground mb-4">
               Welcome to Pootle Sites
             </h2>
