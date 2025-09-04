@@ -33,6 +33,12 @@ export const StorageIndicator = () => {
     return 'default';
   };
 
+  const formatPercentage = (p: number) => {
+    if (p >= 10) return `${Math.round(p)}%`;
+    if (p >= 1) return `${p.toFixed(1)}%`;
+    if (p > 0) return '<1%';
+    return '0%';
+  };
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -45,7 +51,7 @@ export const StorageIndicator = () => {
             />
           </div>
           <span className="text-xs text-muted-foreground font-mono">
-            {storageInfo.percentage.toFixed(0)}%
+            {formatPercentage(storageInfo.percentage)}
           </span>
         </div>
       </TooltipTrigger>
@@ -56,10 +62,13 @@ export const StorageIndicator = () => {
             <span className="text-muted-foreground">Used:</span> {formatBytes(storageInfo.used)}
           </div>
           <div>
-            <span className="text-muted-foreground">Available:</span> {formatBytes(storageInfo.quota)}
+            <span className="text-muted-foreground">Total:</span> {formatBytes(storageInfo.quota)}
           </div>
           <div>
-            <span className="text-muted-foreground">Percentage:</span> {storageInfo.percentage.toFixed(1)}%
+            <span className="text-muted-foreground">Available:</span> {formatBytes(Math.max(storageInfo.quota - storageInfo.used, 0))}
+          </div>
+          <div>
+            <span className="text-muted-foreground">Percentage:</span> {formatPercentage(storageInfo.percentage)}
           </div>
           {storageInfo.isPersistent && (
             <div className="text-xs text-green-600 dark:text-green-400">
