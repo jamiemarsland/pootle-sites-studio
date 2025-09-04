@@ -129,6 +129,19 @@ const Site = () => {
 
       setPlaygroundClient(client);
 
+      // Sync the site name to WordPress
+      try {
+        await client.run({
+          code: `<?php
+            update_option('blogname', '${site.title.replace(/'/g, "\\'")}');
+            update_option('blogdescription', 'A Pootle site');
+          ?>`
+        });
+        console.log('Site name synced to WordPress:', site.title);
+      } catch (error) {
+        console.warn('Failed to sync site name to WordPress:', error);
+      }
+
       // Add diagnostics to check if mount worked (debug mode only)
       if (isDebugMode) {
         setTimeout(async () => {
