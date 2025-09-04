@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Loader2, AlertCircle, ExternalLink, Plus, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Loader2, AlertCircle, ExternalLink, Plus, ChevronDown, EyeOff, Eye } from 'lucide-react';
 import { getSiteMetadata, updateSite, requestPersistentStorage } from '@/utils/storage';
 import { initializePlayground } from '@/utils/playground';
 import { Site as SiteType } from '@/types/site';
@@ -18,6 +18,9 @@ const Site = () => {
   const [error, setError] = useState<string | null>(null);
   const [playgroundClient, setPlaygroundClient] = useState<any>(null);
   const autoSaveIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [isBarHidden, setIsBarHidden] = useState(() => {
+    return localStorage.getItem('pootle-bar-hidden') === 'true';
+  });
 
   // Debug mode detection
   const isDebugMode = import.meta.env.DEV || 
@@ -48,6 +51,22 @@ const Site = () => {
       }
     };
   }, []);
+
+  useEffect(() => {
+    // Keyboard shortcuts
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.shiftKey && e.key === 'H') {
+        e.preventDefault();
+        toggleBarVisibility();
+      } else if (e.key === 'Escape' && isBarHidden) {
+        e.preventDefault();
+        showBar();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isBarHidden]);
 
 
   const checkOPFSSupport = async () => {
@@ -267,6 +286,22 @@ const Site = () => {
     navigate('/');
   };
 
+  const toggleBarVisibility = () => {
+    const newHiddenState = !isBarHidden;
+    setIsBarHidden(newHiddenState);
+    localStorage.setItem('pootle-bar-hidden', newHiddenState.toString());
+  };
+
+  const showBar = () => {
+    setIsBarHidden(false);
+    localStorage.setItem('pootle-bar-hidden', 'false');
+  };
+
+  const hideBar = () => {
+    setIsBarHidden(true);
+    localStorage.setItem('pootle-bar-hidden', 'true');
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -297,15 +332,41 @@ const Site = () => {
   return (
     <div className="h-screen bg-background flex flex-col overflow-hidden">
       {/* Visible Pootle Sites Tab */}
-      <button
-        type="button"
-        className="fixed top-0 left-1/2 -translate-x-1/2 z-[60] mt-0.5 flex items-center gap-1 rounded-b-lg bg-card/90 backdrop-blur border border-border px-2 py-0.5 text-xs text-foreground shadow-md hover:bg-accent hover:text-accent-foreground transition-colors"
-        onClick={handleBack}
-        aria-label="Back to Pootle Sites"
-      >
-        <ChevronDown className="h-3 w-3" aria-hidden="true" />
-        <span>Back to Pootle Sites</span>
-      </button>
+      {!isBarHidden && (
+        <div className="fixed top-0 left-1/2 -translate-x-1/2 z-[60] mt-0.5 flex items-center gap-1 rounded-b-lg bg-card/90 backdrop-blur border border-border px-2 py-0.5 text-xs text-foreground shadow-md transition-all duration-300">
+          <button
+            type="button"
+            className="flex items-center gap-1 hover:bg-accent hover:text-accent-foreground transition-colors rounded px-1 py-0.5"
+            onClick={handleBack}
+            aria-label="Back to Pootle Sites"
+          >
+            <ChevronDown className="h-3 w-3" aria-hidden="true" />
+            <span>Back to Pootle Sites</span>
+          </button>
+          <button
+            type="button"
+            className="ml-1 p-0.5 hover:bg-accent hover:text-accent-foreground transition-colors rounded"
+            onClick={hideBar}
+            aria-label="Hide bar (Shift+H to toggle, Esc to show)"
+            title="Hide bar (Shift+H to toggle, Esc to show)"
+          >
+            <EyeOff className="h-3 w-3" />
+          </button>
+        </div>
+      )}
+
+      {/* Reveal Handle - only shown when bar is hidden */}
+      {isBarHidden && (
+        <button
+          type="button"
+          className="fixed top-0 left-1/2 -translate-x-1/2 z-[60] w-16 h-1 bg-muted/50 hover:bg-muted hover:h-6 hover:rounded-b-lg hover:flex hover:items-center hover:justify-center transition-all duration-300 group"
+          onClick={showBar}
+          aria-label="Show navigation bar (click or press Esc)"
+          title="Show navigation bar (click or press Esc)"
+        >
+          <Eye className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+        </button>
+      )}
 
       {/* WordPress Playground - Takes full height */}
       <div className="flex-1 relative overflow-hidden">
