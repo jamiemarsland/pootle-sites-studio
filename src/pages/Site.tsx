@@ -18,7 +18,7 @@ const Site = () => {
   const [error, setError] = useState<string | null>(null);
   const [playgroundClient, setPlaygroundClient] = useState<any>(null);
   const autoSaveIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const [chromeHidden, setChromeHidden] = useState(false);
+  const [chromeHidden, setChromeHidden] = useState(true);
   const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Debug mode detection
@@ -354,10 +354,10 @@ const Site = () => {
       />
 
       {/* Visible Reveal Tab */}
-      {chromeHidden && !isInitializing && (
+      {chromeHidden && (
         <button
           type="button"
-          className="fixed top-0 left-1/2 -translate-x-1/2 z-50 mt-0.5 flex items-center gap-1 rounded-b-lg bg-card/90 backdrop-blur border border-border px-2 py-0.5 text-xs text-foreground shadow-md hover:bg-accent hover:text-accent-foreground transition-colors"
+          className="fixed top-0 left-1/2 -translate-x-1/2 z-[60] mt-0.5 flex items-center gap-1 rounded-b-lg bg-card/90 backdrop-blur border border-border px-2 py-0.5 text-xs text-foreground shadow-md hover:bg-accent hover:text-accent-foreground transition-colors"
           onClick={handleBack}
           aria-label="Back to Pootle Sites"
         >
