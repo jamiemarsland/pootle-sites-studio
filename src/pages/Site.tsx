@@ -18,6 +18,8 @@ const Site = () => {
   const [error, setError] = useState<string | null>(null);
   const [playgroundClient, setPlaygroundClient] = useState<any>(null);
   const autoSaveIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [chromeHidden, setChromeHidden] = useState(false);
+  const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Debug mode detection
   const isDebugMode = import.meta.env.DEV || 
@@ -41,13 +43,62 @@ const Site = () => {
   }, [site, playgroundClient]);
 
   useEffect(() => {
+    // Auto-hide chrome when WordPress is loaded
+    if (playgroundClient && site?.isInitialized && !isInitializing) {
+      const timer = setTimeout(() => {
+        setChromeHidden(true);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [playgroundClient, site?.isInitialized, isInitializing]);
+
+  useEffect(() => {
+    // Keyboard shortcut to toggle chrome (Escape key)
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setChromeHidden(prev => !prev);
+        clearHideTimeout();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyPress);
+    return () => document.removeEventListener('keydown', handleKeyPress);
+  }, []);
+
+  useEffect(() => {
     // Cleanup on unmount
     return () => {
       if (autoSaveIntervalRef.current) {
         clearInterval(autoSaveIntervalRef.current);
       }
+      clearHideTimeout();
     };
   }, []);
+
+  const clearHideTimeout = () => {
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+      hideTimeoutRef.current = null;
+    }
+  };
+
+  const handleChromeMouseEnter = () => {
+    clearHideTimeout();
+    setChromeHidden(false);
+  };
+
+  const handleChromeMouseLeave = () => {
+    if (playgroundClient && site?.isInitialized) {
+      hideTimeoutRef.current = setTimeout(() => {
+        setChromeHidden(true);
+      }, 2000);
+    }
+  };
+
+  const handleRevealStripHover = () => {
+    setChromeHidden(false);
+    clearHideTimeout();
+  };
 
   const checkOPFSSupport = async () => {
     try {
@@ -294,9 +345,22 @@ const Site = () => {
   }
 
   return (
-    <div className="h-screen bg-background flex flex-col overflow-hidden">
-      {/* Top Bar - Minimal height */}
-      <header className="bg-card border-b border-border px-4 py-3 flex items-center gap-3 shrink-0 h-16">
+    <div className="h-screen bg-background flex flex-col overflow-hidden relative">
+      {/* Reveal Strip - Invisible hover area at top */}
+      <div 
+        className="absolute top-0 left-0 right-0 h-2 z-50 cursor-pointer"
+        onMouseEnter={handleRevealStripHover}
+        title="Hover to show controls (or press Escape)"
+      />
+      
+      {/* Top Bar - Auto-hiding with smooth transitions */}
+      <header 
+        className={`bg-card border-b border-border px-4 py-3 flex items-center gap-3 shrink-0 h-16 fixed top-0 left-0 right-0 z-40 transition-all duration-300 ease-out ${
+          chromeHidden ? '-translate-y-full opacity-0' : 'translate-y-0 opacity-100'
+        }`}
+        onMouseEnter={handleChromeMouseEnter}
+        onMouseLeave={handleChromeMouseLeave}
+      >
         <Button 
           variant="ghost" 
           size="sm" 
@@ -353,7 +417,9 @@ const Site = () => {
       </header>
 
       {/* WordPress Playground - Takes remaining height */}
-      <div className="flex-1 relative overflow-hidden">
+      <div className={`flex-1 relative overflow-hidden transition-all duration-300 ease-out ${
+        chromeHidden ? 'mt-0' : 'mt-16'
+      }`}>
         {isInitializing && (
           <div className="absolute inset-0 bg-background/95 backdrop-blur-sm flex items-center justify-center z-50">
             <div className="text-center p-8 bg-card rounded-lg border shadow-lg">
