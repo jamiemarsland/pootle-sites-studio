@@ -124,8 +124,7 @@ const Site = () => {
       const client = await initializePlayground(
         iframeRef.current,
         site.id,
-        site.isInitialized,
-        site.title
+        site.isInitialized
       );
 
       setPlaygroundClient(client);
