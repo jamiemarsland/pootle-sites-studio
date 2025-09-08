@@ -42,10 +42,54 @@ export const initializePlayground = async (
     // Safe helper: install mu-plugin without failing initialization
     const safeInstallMuPlugin = async (client: any) => {
       try {
-        const muPluginContent = `<?php\n/*\nPlugin Name: Pootle Relative URLs\nDescription: Forces relative URLs to prevent new tab navigation in iframe\nVersion: 1.0\n*/\n\nadd_filter('admin_url', 'pootle_make_relative_url', 10, 2);\nadd_filter('network_admin_url', 'pootle_make_relative_url', 10, 2);\nadd_filter('site_url', 'pootle_make_relative_url', 10, 2);\nadd_filter('home_url', 'pootle_make_relative_url', 10, 2);\nadd_filter('plugins_url', 'pootle_make_relative_url', 10, 2);\nadd_filter('wp_redirect', 'pootle_make_relative_url', 10, 1);\n\nfunction pootle_make_relative_url($url, $path = '') {\n    if (strpos($url, 'scope:') === 0 || preg_match('#^https?://#i', $url)) {\n        $parsed = parse_url($url);\n        $relative = $parsed['path'] ?? '';\n        if (!empty($parsed['query'])) { $relative .= '?' . $parsed['query']; }\n        if (!empty($parsed['fragment'])) { $relative .= '#' . $parsed['fragment']; }\n        return $relative ?: '/';\n    }\n    return $url;\n}\n`;
+        const muPluginContent = `<?php
+/*
+Plugin Name: Pootle Relative URLs
+Description: Forces relative URLs to prevent new tab navigation in iframe
+Version: 1.0
+*/
 
-        const php = `<?php\n$dir = '/wordpress/wp-content/mu-plugins';\nif (!is_dir($dir)) { mkdir($dir, 0777, true); }\n$file = $dir . '/pootle-relative-urls.php';\n$contents = ${JSON.stringify(muPluginContent)};\nfile_put_contents($file, $contents);\necho file_exists($file) ? 'ok' : 'fail';\n?>`;
-        await client.run({ code: php });
+add_filter('admin_url', 'pootle_make_relative_url', 10, 2);
+add_filter('network_admin_url', 'pootle_make_relative_url', 10, 2);
+add_filter('site_url', 'pootle_make_relative_url', 10, 2);
+add_filter('home_url', 'pootle_make_relative_url', 10, 2);
+add_filter('plugins_url', 'pootle_make_relative_url', 10, 2);
+add_filter('wp_redirect', 'pootle_make_relative_url', 10, 1);
+
+function pootle_make_relative_url($url, $path = '') {
+    if (strpos($url, 'scope:') === 0 || preg_match('#^https?://#i', $url)) {
+        $parsed = parse_url($url);
+        $relative = $parsed['path'] ?? '';
+        if (!empty($parsed['query'])) { $relative .= '?' . $parsed['query']; }
+        if (!empty($parsed['fragment'])) { $relative .= '#' . $parsed['fragment']; }
+        return $relative ?: '/';
+    }
+    return $url;
+}
+
+// Prevent redirect after plugin activation
+add_filter('wp_redirect', function($location) {
+    if (strpos($location, 'plugins.php') !== false && strpos($location, 'activate=true') !== false) {
+        return false; // Cancel redirect, stay on current page
+    }
+    return $location;
+}, 999);
+`;
+
+        await client.run({ 
+          code: `<?php
+$dir = '/wordpress/wp-content/mu-plugins';
+if (!is_dir($dir)) { 
+    wp_mkdir_p($dir); 
+}
+$file = $dir . '/pootle-relative-urls.php';
+$contents = <<<'EOF'
+${muPluginContent}
+EOF;
+file_put_contents($file, $contents);
+echo file_exists($file) ? 'ok' : 'fail';
+?>` 
+        });
       } catch (e) {
         console.warn('MU plugin install skipped (non-fatal):', e);
       }
