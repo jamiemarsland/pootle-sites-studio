@@ -7,47 +7,11 @@ export const PLAYGROUND_CONFIG = {
       php: '8.0',
       wp: 'latest'
     },
-    constants: {
-      WP_HOME: 'https://playground.wordpress.net/',
-      WP_SITEURL: 'https://playground.wordpress.net/'
-    },
     steps: [
       {
         step: 'login',
         username: 'admin',
         password: 'password'
-      },
-      {
-        step: 'runPHP',
-        code: `<?php
-          // Comprehensive URL rewriting to prevent new tab navigation
-          add_filter('admin_url', function($url) {
-            return str_replace(['https://playground.wordpress.net/', 'http://playground.wordpress.net/'], '/', $url);
-          });
-          
-          add_filter('wp_redirect', function($location) {
-            return str_replace(['https://playground.wordpress.net/', 'http://playground.wordpress.net/'], '/', $location);
-          });
-          
-          add_filter('site_url', function($url) {
-            return str_replace(['https://playground.wordpress.net/', 'http://playground.wordpress.net/'], '/', $url);
-          });
-          
-          add_filter('home_url', function($url) {
-            return str_replace(['https://playground.wordpress.net/', 'http://playground.wordpress.net/'], '/', $url);
-          });
-          
-          // Force all WordPress URLs to be relative
-          add_action('wp_loaded', function() {
-            add_filter('plugins_url', function($url) {
-              return str_replace(['https://playground.wordpress.net/', 'http://playground.wordpress.net/'], '/', $url);
-            });
-            
-            add_filter('wp_nonce_url', function($actionurl) {
-              return str_replace(['https://playground.wordpress.net/', 'http://playground.wordpress.net/'], '/', $actionurl);
-            });
-          });
-        ?>`
       }
     ]
   }
