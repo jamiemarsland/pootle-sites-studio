@@ -70,10 +70,26 @@ function pootle_make_relative_url($url, $path = '') {
 // Prevent redirect after plugin activation and log what's happening
 add_filter('wp_redirect', function($location) {
     error_log('[Pootle] Redirect intercepted: ' . $location);
-    if (strpos($location, 'plugins.php') !== false && strpos($location, 'activate=true') !== false) {
-        error_log('[Pootle] Blocking plugin activation redirect');
-        return false; // Cancel redirect, stay on current page
+    
+    // Block all plugin-related redirects that might open in new tabs
+    if (strpos($location, 'plugins.php') !== false) {
+        if (strpos($location, 'activate=true') !== false || 
+            strpos($location, 'plugin-activated') !== false ||
+            strpos($location, 'activated') !== false) {
+            error_log('[Pootle] Blocking plugin activation redirect');
+            return false; // Cancel redirect, stay on current page
+        }
     }
+    
+    // Also block redirects from plugin installation screen
+    if (strpos($location, 'plugin-install.php') !== false ||
+        strpos($location, 'update.php') !== false) {
+        if (strpos($location, 'activate-plugin') !== false) {
+            error_log('[Pootle] Blocking post-install activation redirect');
+            return false;
+        }
+    }
+    
     return $location;
 }, 999);
 
