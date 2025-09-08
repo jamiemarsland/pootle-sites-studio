@@ -53,6 +53,56 @@ export const initializePlayground = async (
         await (client as any).isReady();
       }
 
+      // Install URL rewriting mu-plugin to prevent new tab navigation
+      await client.writeFile(
+        '/wordpress/wp-content/mu-plugins/pootle-relative-urls.php',
+        `<?php
+/**
+ * Plugin Name: Pootle Relative URLs
+ * Description: Forces all WordPress URLs to be relative to prevent new tab navigation in iframe
+ * Version: 1.0
+ */
+
+// Force all admin URLs to be relative
+add_filter('admin_url', 'pootle_make_relative_url', 10, 2);
+add_filter('network_admin_url', 'pootle_make_relative_url', 10, 2);
+add_filter('site_url', 'pootle_make_relative_url', 10, 2);
+add_filter('home_url', 'pootle_make_relative_url', 10, 2);
+add_filter('plugins_url', 'pootle_make_relative_url', 10, 2);
+
+// Force redirects to be relative
+add_filter('wp_redirect', 'pootle_make_relative_url', 10, 1);
+
+function pootle_make_relative_url($url, $path = '') {
+    // Convert absolute and scope: URLs to relative paths
+    if (strpos($url, 'scope:') === 0 || strpos($url, 'http') === 0) {
+        $parsed = parse_url($url);
+        $relative = $parsed['path'] ?? '';
+        if (!empty($parsed['query'])) {
+            $relative .= '?' . $parsed['query'];
+        }
+        if (!empty($parsed['fragment'])) {
+            $relative .= '#' . $parsed['fragment'];
+        }
+        return $relative ?: '/';
+    }
+    return $url;
+}
+
+// Force plugin activation to stay in current window
+add_action('admin_init', function() {
+    // Remove default plugin activation redirect
+    remove_action('activated_plugin', '_redirect_newly_activated_plugin');
+    
+    // Add custom handler that doesn't redirect
+    add_action('activated_plugin', function($plugin) {
+        // Just log activation, no redirect
+        error_log("Plugin activated: " . $plugin);
+    });
+});
+?>`
+      );
+
       // On first launch, mount OPFS after WordPress installs to run memfs -> opfs
       if (!isInitialized && typeof (client as any).mountOpfs === 'function') {
         await (client as any).mountOpfs(mountDescriptor);
@@ -74,6 +124,56 @@ export const initializePlayground = async (
       if (typeof (client as any).isReady === 'function') {
         await (client as any).isReady();
       }
+
+      // Install URL rewriting mu-plugin for localStorage fallback too
+      await client.writeFile(
+        '/wordpress/wp-content/mu-plugins/pootle-relative-urls.php',
+        `<?php
+/**
+ * Plugin Name: Pootle Relative URLs
+ * Description: Forces all WordPress URLs to be relative to prevent new tab navigation in iframe
+ * Version: 1.0
+ */
+
+// Force all admin URLs to be relative
+add_filter('admin_url', 'pootle_make_relative_url', 10, 2);
+add_filter('network_admin_url', 'pootle_make_relative_url', 10, 2);
+add_filter('site_url', 'pootle_make_relative_url', 10, 2);
+add_filter('home_url', 'pootle_make_relative_url', 10, 2);
+add_filter('plugins_url', 'pootle_make_relative_url', 10, 2);
+
+// Force redirects to be relative
+add_filter('wp_redirect', 'pootle_make_relative_url', 10, 1);
+
+function pootle_make_relative_url($url, $path = '') {
+    // Convert absolute and scope: URLs to relative paths
+    if (strpos($url, 'scope:') === 0 || strpos($url, 'http') === 0) {
+        $parsed = parse_url($url);
+        $relative = $parsed['path'] ?? '';
+        if (!empty($parsed['query'])) {
+            $relative .= '?' . $parsed['query'];
+        }
+        if (!empty($parsed['fragment'])) {
+            $relative .= '#' . $parsed['fragment'];
+        }
+        return $relative ?: '/';
+    }
+    return $url;
+}
+
+// Force plugin activation to stay in current window
+add_action('admin_init', function() {
+    // Remove default plugin activation redirect
+    remove_action('activated_plugin', '_redirect_newly_activated_plugin');
+    
+    // Add custom handler that doesn't redirect
+    add_action('activated_plugin', function($plugin) {
+        // Just log activation, no redirect
+        error_log("Plugin activated: " . $plugin);
+    });
+});
+?>`
+      );
       
       // Load from localStorage if this is an existing site
       if (isInitialized) {
