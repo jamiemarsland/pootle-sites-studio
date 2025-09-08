@@ -448,7 +448,7 @@ echo get_option('blogname');
           ref={iframeRef}
           className={`w-full h-full border-0 block transition-opacity duration-500 ${isTitleSyncing ? 'opacity-50' : 'opacity-100'}`}
           title={`WordPress - ${site.title}`}
-          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"
+          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads allow-top-navigation-by-user-activation"
           style={{ 
             minHeight: '100%',
             height: '100%',
