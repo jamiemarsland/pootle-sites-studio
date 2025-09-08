@@ -38,6 +38,18 @@ export const initializePlayground = async (
     // Try OPFS first, fallback to localStorage for deployed environments
     let client;
     let useOPFS = true;
+
+    // Safe helper: install mu-plugin without failing initialization
+    const safeInstallMuPlugin = async (client: any) => {
+      try {
+        const muPluginContent = `<?php\n/*\nPlugin Name: Pootle Relative URLs\nDescription: Forces relative URLs to prevent new tab navigation in iframe\nVersion: 1.0\n*/\n\nadd_filter('admin_url', 'pootle_make_relative_url', 10, 2);\nadd_filter('network_admin_url', 'pootle_make_relative_url', 10, 2);\nadd_filter('site_url', 'pootle_make_relative_url', 10, 2);\nadd_filter('home_url', 'pootle_make_relative_url', 10, 2);\nadd_filter('plugins_url', 'pootle_make_relative_url', 10, 2);\nadd_filter('wp_redirect', 'pootle_make_relative_url', 10, 1);\n\nfunction pootle_make_relative_url($url, $path = '') {\n    if (strpos($url, 'scope:') === 0 || preg_match('#^https?://#i', $url)) {\n        $parsed = parse_url($url);\n        $relative = $parsed['path'] ?? '';\n        if (!empty($parsed['query'])) { $relative .= '?' . $parsed['query']; }\n        if (!empty($parsed['fragment'])) { $relative .= '#' . $parsed['fragment']; }\n        return $relative ?: '/';\n    }\n    return $url;\n}\n`;
+
+        const php = `<?php\n$dir = '/wordpress/wp-content/mu-plugins';\nif (!is_dir($dir)) { mkdir($dir, 0777, true); }\n$file = $dir . '/pootle-relative-urls.php';\n$contents = ${JSON.stringify(muPluginContent)};\nfile_put_contents($file, $contents);\necho file_exists($file) ? 'ok' : 'fail';\n?>`;
+        await client.run({ code: php });
+      } catch (e) {
+        console.warn('MU plugin install skipped (non-fatal):', e);
+      }
+    };
     
     try {
       client = await startPlaygroundWeb({
@@ -53,55 +65,8 @@ export const initializePlayground = async (
         await (client as any).isReady();
       }
 
-      // Install URL rewriting mu-plugin to prevent new tab navigation
-      await client.writeFile(
-        '/wordpress/wp-content/mu-plugins/pootle-relative-urls.php',
-        `<?php
-/**
- * Plugin Name: Pootle Relative URLs
- * Description: Forces all WordPress URLs to be relative to prevent new tab navigation in iframe
- * Version: 1.0
- */
-
-// Force all admin URLs to be relative
-add_filter('admin_url', 'pootle_make_relative_url', 10, 2);
-add_filter('network_admin_url', 'pootle_make_relative_url', 10, 2);
-add_filter('site_url', 'pootle_make_relative_url', 10, 2);
-add_filter('home_url', 'pootle_make_relative_url', 10, 2);
-add_filter('plugins_url', 'pootle_make_relative_url', 10, 2);
-
-// Force redirects to be relative
-add_filter('wp_redirect', 'pootle_make_relative_url', 10, 1);
-
-function pootle_make_relative_url($url, $path = '') {
-    // Convert absolute and scope: URLs to relative paths
-    if (strpos($url, 'scope:') === 0 || strpos($url, 'http') === 0) {
-        $parsed = parse_url($url);
-        $relative = $parsed['path'] ?? '';
-        if (!empty($parsed['query'])) {
-            $relative .= '?' . $parsed['query'];
-        }
-        if (!empty($parsed['fragment'])) {
-            $relative .= '#' . $parsed['fragment'];
-        }
-        return $relative ?: '/';
-    }
-    return $url;
-}
-
-// Force plugin activation to stay in current window
-add_action('admin_init', function() {
-    // Remove default plugin activation redirect
-    remove_action('activated_plugin', '_redirect_newly_activated_plugin');
-    
-    // Add custom handler that doesn't redirect
-    add_action('activated_plugin', function($plugin) {
-        // Just log activation, no redirect
-        error_log("Plugin activated: " . $plugin);
-    });
-});
-?>`
-      );
+      // Install URL rewriting mu-plugin safely (non-fatal)
+      await safeInstallMuPlugin(client);
 
       // On first launch, mount OPFS after WordPress installs to run memfs -> opfs
       if (!isInitialized && typeof (client as any).mountOpfs === 'function') {
@@ -125,55 +90,8 @@ add_action('admin_init', function() {
         await (client as any).isReady();
       }
 
-      // Install URL rewriting mu-plugin for localStorage fallback too
-      await client.writeFile(
-        '/wordpress/wp-content/mu-plugins/pootle-relative-urls.php',
-        `<?php
-/**
- * Plugin Name: Pootle Relative URLs
- * Description: Forces all WordPress URLs to be relative to prevent new tab navigation in iframe
- * Version: 1.0
- */
-
-// Force all admin URLs to be relative
-add_filter('admin_url', 'pootle_make_relative_url', 10, 2);
-add_filter('network_admin_url', 'pootle_make_relative_url', 10, 2);
-add_filter('site_url', 'pootle_make_relative_url', 10, 2);
-add_filter('home_url', 'pootle_make_relative_url', 10, 2);
-add_filter('plugins_url', 'pootle_make_relative_url', 10, 2);
-
-// Force redirects to be relative
-add_filter('wp_redirect', 'pootle_make_relative_url', 10, 1);
-
-function pootle_make_relative_url($url, $path = '') {
-    // Convert absolute and scope: URLs to relative paths
-    if (strpos($url, 'scope:') === 0 || strpos($url, 'http') === 0) {
-        $parsed = parse_url($url);
-        $relative = $parsed['path'] ?? '';
-        if (!empty($parsed['query'])) {
-            $relative .= '?' . $parsed['query'];
-        }
-        if (!empty($parsed['fragment'])) {
-            $relative .= '#' . $parsed['fragment'];
-        }
-        return $relative ?: '/';
-    }
-    return $url;
-}
-
-// Force plugin activation to stay in current window
-add_action('admin_init', function() {
-    // Remove default plugin activation redirect
-    remove_action('activated_plugin', '_redirect_newly_activated_plugin');
-    
-    // Add custom handler that doesn't redirect
-    add_action('activated_plugin', function($plugin) {
-        // Just log activation, no redirect
-        error_log("Plugin activated: " . $plugin);
-    });
-});
-?>`
-      );
+      // Install URL rewriting mu-plugin safely (non-fatal)
+      await safeInstallMuPlugin(client);
       
       // Load from localStorage if this is an existing site
       if (isInitialized) {
