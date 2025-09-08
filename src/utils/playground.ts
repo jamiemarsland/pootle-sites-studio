@@ -67,27 +67,45 @@ function pootle_make_relative_url($url, $path = '') {
     return $url;
 }
 
-// Prevent redirect after plugin activation
+// Prevent redirect after plugin activation and log what's happening
 add_filter('wp_redirect', function($location) {
+    error_log('[Pootle] Redirect intercepted: ' . $location);
     if (strpos($location, 'plugins.php') !== false && strpos($location, 'activate=true') !== false) {
+        error_log('[Pootle] Blocking plugin activation redirect');
         return false; // Cancel redirect, stay on current page
     }
     return $location;
 }, 999);
+
+// Hook into plugin activation to log what's happening
+add_action('activate_plugin', function($plugin) {
+    error_log('[Pootle] Plugin activated: ' . $plugin);
+});
+
+add_action('activated_plugin', function($plugin) {
+    error_log('[Pootle] Plugin activation completed: ' . $plugin);
+});
 `;
 
         await client.run({ 
           code: `<?php
+// Create mu-plugins directory using basic PHP
 $dir = '/wordpress/wp-content/mu-plugins';
 if (!is_dir($dir)) { 
-    wp_mkdir_p($dir); 
+    if (!mkdir($dir, 0755, true)) {
+        echo 'failed to create dir';
+        exit;
+    }
 }
 $file = $dir . '/pootle-relative-urls.php';
 $contents = <<<'EOF'
 ${muPluginContent}
 EOF;
-file_put_contents($file, $contents);
-echo file_exists($file) ? 'ok' : 'fail';
+if (file_put_contents($file, $contents) === false) {
+    echo 'failed to write file';
+} else {
+    echo 'ok - ' . filesize($file) . ' bytes written';
+}
 ?>` 
         });
       } catch (e) {
