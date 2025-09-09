@@ -38,96 +38,6 @@ export const initializePlayground = async (
     // Try OPFS first, fallback to localStorage for deployed environments
     let client;
     let useOPFS = true;
-
-    // Safe helper: install mu-plugin without failing initialization
-    const safeInstallMuPlugin = async (client: any) => {
-      try {
-        const muPluginContent = `<?php
-/*
-Plugin Name: Pootle Relative URLs
-Description: Forces relative URLs to prevent new tab navigation in iframe
-Version: 1.0
-*/
-
-add_filter('admin_url', 'pootle_make_relative_url', 10, 2);
-add_filter('network_admin_url', 'pootle_make_relative_url', 10, 2);
-add_filter('site_url', 'pootle_make_relative_url', 10, 2);
-add_filter('home_url', 'pootle_make_relative_url', 10, 2);
-add_filter('plugins_url', 'pootle_make_relative_url', 10, 2);
-add_filter('wp_redirect', 'pootle_make_relative_url', 10, 1);
-
-function pootle_make_relative_url($url, $path = '') {
-    if (strpos($url, 'scope:') === 0 || preg_match('#^https?://#i', $url)) {
-        $parsed = parse_url($url);
-        $relative = $parsed['path'] ?? '';
-        if (!empty($parsed['query'])) { $relative .= '?' . $parsed['query']; }
-        if (!empty($parsed['fragment'])) { $relative .= '#' . $parsed['fragment']; }
-        return $relative ?: '/';
-    }
-    return $url;
-}
-
-// Prevent redirect after plugin activation and log what's happening
-add_filter('wp_redirect', function($location) {
-    error_log('[Pootle] Redirect intercepted: ' . $location);
-    
-    // Block all plugin-related redirects that might open in new tabs
-    if (strpos($location, 'plugins.php') !== false) {
-        if (strpos($location, 'activate=true') !== false || 
-            strpos($location, 'plugin-activated') !== false ||
-            strpos($location, 'activated') !== false) {
-            error_log('[Pootle] Blocking plugin activation redirect');
-            return false; // Cancel redirect, stay on current page
-        }
-    }
-    
-    // Also block redirects from plugin installation screen
-    if (strpos($location, 'plugin-install.php') !== false ||
-        strpos($location, 'update.php') !== false) {
-        if (strpos($location, 'activate-plugin') !== false) {
-            error_log('[Pootle] Blocking post-install activation redirect');
-            return false;
-        }
-    }
-    
-    return $location;
-}, 999);
-
-// Hook into plugin activation to log what's happening
-add_action('activate_plugin', function($plugin) {
-    error_log('[Pootle] Plugin activated: ' . $plugin);
-});
-
-add_action('activated_plugin', function($plugin) {
-    error_log('[Pootle] Plugin activation completed: ' . $plugin);
-});
-`;
-
-        await client.run({ 
-          code: `<?php
-// Create mu-plugins directory using basic PHP
-$dir = '/wordpress/wp-content/mu-plugins';
-if (!is_dir($dir)) { 
-    if (!mkdir($dir, 0755, true)) {
-        echo 'failed to create dir';
-        exit;
-    }
-}
-$file = $dir . '/pootle-relative-urls.php';
-$contents = <<<'EOF'
-${muPluginContent}
-EOF;
-if (file_put_contents($file, $contents) === false) {
-    echo 'failed to write file';
-} else {
-    echo 'ok - ' . filesize($file) . ' bytes written';
-}
-?>` 
-        });
-      } catch (e) {
-        console.warn('MU plugin install skipped (non-fatal):', e);
-      }
-    };
     
     try {
       client = await startPlaygroundWeb({
@@ -142,9 +52,6 @@ if (file_put_contents($file, $contents) === false) {
       if (typeof (client as any).isReady === 'function') {
         await (client as any).isReady();
       }
-
-      // Install URL rewriting mu-plugin safely (non-fatal)
-      await safeInstallMuPlugin(client);
 
       // On first launch, mount OPFS after WordPress installs to run memfs -> opfs
       if (!isInitialized && typeof (client as any).mountOpfs === 'function') {
@@ -167,9 +74,6 @@ if (file_put_contents($file, $contents) === false) {
       if (typeof (client as any).isReady === 'function') {
         await (client as any).isReady();
       }
-
-      // Install URL rewriting mu-plugin safely (non-fatal)
-      await safeInstallMuPlugin(client);
       
       // Load from localStorage if this is an existing site
       if (isInitialized) {

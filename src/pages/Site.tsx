@@ -252,8 +252,7 @@ echo get_option('blogname');
     try {
       console.log('=== OPFS Contents Check ===');
       const opfsRoot = await navigator.storage.getDirectory();
-      const wpStudioDir = await opfsRoot.getDirectoryHandle('wp-studio', { create: false });
-      const sitesDir = await wpStudioDir.getDirectoryHandle('sites', { create: false });
+      const sitesDir = await opfsRoot.getDirectoryHandle('wp-studio/sites', { create: false });
       const siteDir = await sitesDir.getDirectoryHandle(siteId, { create: false });
       
       console.log('Site directory exists in OPFS');
@@ -449,7 +448,7 @@ echo get_option('blogname');
           ref={iframeRef}
           className={`w-full h-full border-0 block transition-opacity duration-500 ${isTitleSyncing ? 'opacity-50' : 'opacity-100'}`}
           title={`WordPress - ${site.title}`}
-          sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-downloads allow-top-navigation-by-user-activation"
+          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"
           style={{ 
             minHeight: '100%',
             height: '100%',
