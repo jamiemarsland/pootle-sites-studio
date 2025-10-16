@@ -59,7 +59,7 @@ export const initializePlayground = async (
         iframe,
         remoteUrl: `https://playground.wordpress.net/remote.html`,
         blueprint: PLAYGROUND_CONFIG.blueprint,
-        shouldInstallWordPress: needsFreshInstall,
+        shouldInstallWordPress: true,
         mounts: [],
       });
 
@@ -80,7 +80,7 @@ export const initializePlayground = async (
         iframe,
         remoteUrl: `https://playground.wordpress.net/remote.html`,
         blueprint: PLAYGROUND_CONFIG.blueprint,
-        shouldInstallWordPress: needsFreshInstall,
+        shouldInstallWordPress: true,
       });
 
       if (typeof (client as any).isReady === 'function') {
