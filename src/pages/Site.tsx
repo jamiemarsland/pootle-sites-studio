@@ -131,12 +131,20 @@ const Site = () => {
 
       // Download site files from cloud to local OPFS before initializing
       console.log(`[Site] Downloading files for site ${foundSite.id} from cloud...`);
-      try {
-        await downloadSiteFromCloud(foundSite.id, user.id);
-        console.log(`[Site] Files downloaded successfully`);
-      } catch (downloadError) {
-        console.error('[Site] Failed to download files from cloud:', downloadError);
-        // Continue anyway - might be a new site or files might already be local
+      
+      // Only download if the site is initialized (has data to download)
+      if (foundSite.isInitialized) {
+        try {
+          await downloadSiteFromCloud(foundSite.id, user.id);
+          console.log(`[Site] Files downloaded successfully`);
+        } catch (downloadError) {
+          console.error('[Site] Failed to download files from cloud:', downloadError);
+          setError('Failed to load site data from cloud. The site may not be synced yet.');
+          setIsLoading(false);
+          return;
+        }
+      } else {
+        console.log(`[Site] New site - skipping cloud download`);
       }
 
       setSite(foundSite);
