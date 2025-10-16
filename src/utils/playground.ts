@@ -154,34 +154,54 @@ export const syncMemfsToOPFS = async (
 
     // Export the WordPress database and files
     try {
-      // Export WordPress database
-      const dbExport = await client.run({
-        code: `<?php
-        $export_data = array();
-        
-        // Export database
-        $db = new PDO('sqlite:/wordpress/wp-content/database/.ht.sqlite');
-        $tables = $db->query("SELECT name FROM sqlite_master WHERE type='table'")->fetchAll(PDO::FETCH_COLUMN);
-        
-        foreach ($tables as $table) {
-          $rows = $db->query("SELECT * FROM $table")->fetchAll(PDO::FETCH_ASSOC);
-          $export_data['database'][$table] = $rows;
+      // Prefer native SQL export if available
+      let sqlDump: string | null = null;
+      try {
+        if (typeof (client as any).exportSQL === 'function') {
+          sqlDump = await (client as any).exportSQL();
         }
-        
-        // Export wp-config.php
-        if (file_exists('/wordpress/wp-config.php')) {
-          $export_data['wp_config'] = file_get_contents('/wordpress/wp-config.php');
-        }
-        
-        echo json_encode($export_data);
-        `
-      });
+      } catch (e) {
+        console.warn('exportSQL not available, falling back to PHP exporter:', e);
+      }
 
-      // Save database export
-      const dbHandle = await siteDir.getFileHandle('database.json', { create: true });
-      const dbWritable = await dbHandle.createWritable();
-      await dbWritable.write(dbExport.text);
-      await dbWritable.close();
+      if (sqlDump) {
+        // Save SQL dump
+        const sqlHandle = await siteDir.getFileHandle('database.sql', { create: true });
+        const sqlWritable = await sqlHandle.createWritable();
+        await sqlWritable.write(sqlDump);
+        await sqlWritable.close();
+      } else {
+        // Fallback: export via PHP and save as JSON
+        const dbExport = await client.run({
+          code: `<?php
+          $export_data = array();
+          
+          // Export database
+          $db = new PDO('sqlite:/wordpress/wp-content/database/.ht.sqlite');
+          $tables = $db->query("SELECT name FROM sqlite_master WHERE type='table'")->fetchAll(PDO::FETCH_COLUMN);
+          
+          foreach ($tables as $table) {
+            $rows = $db->query("SELECT * FROM $table")->fetchAll(PDO::FETCH_ASSOC);
+            $export_data['database'][$table] = $rows;
+          }
+          
+          // Export wp-config.php
+          if (file_exists('/wordpress/wp-config.php')) {
+            $export_data['wp_config'] = file_get_contents('/wordpress/wp-config.php');
+          }
+          
+          echo json_encode($export_data);
+          `
+        });
+
+        // Save database export JSON
+        const dbHandle = await siteDir.getFileHandle('database.json', { create: true });
+        const dbWritable = await dbHandle.createWritable();
+        const exportText = typeof dbExport === 'string' ? dbExport : ((dbExport && (dbExport as any).text !== undefined) ? (dbExport as any).text : JSON.stringify(dbExport ?? {}));
+        await dbWritable.write(exportText);
+        await dbWritable.close();
+      }
+
 
       // Export wp-content files
       const files = await client.listFiles('/wordpress/wp-content');
@@ -239,40 +259,46 @@ export const syncOPFSToMemfs = async (
     const siteDir = await sitesDir.getDirectoryHandle(siteId, { create: false });
 
     try {
-      // Load database export
-      const dbHandle = await siteDir.getFileHandle('database.json');
-      const dbFile = await dbHandle.getFile();
-      const dbData = JSON.parse(await dbFile.text());
+      // Try SQL dump restore first
+      let restored = false;
+      try {
+        const sqlHandle = await siteDir.getFileHandle('database.sql');
+        const sqlFile = await sqlHandle.getFile();
+        const sql = await sqlFile.text();
+        if (typeof (client as any).importSQL === 'function') {
+          await (client as any).importSQL(sql);
+          restored = true;
+        }
+      } catch (_) {}
 
-      // Restore database
-      await client.run({
-        code: `<?php
-        $import_data = json_decode('${JSON.stringify(dbData).replace(/'/g, "\\'")}', true);
-        
-        if (isset($import_data['database'])) {
-          $db = new PDO('sqlite:/wordpress/wp-content/database/.ht.sqlite');
-          
-          foreach ($import_data['database'] as $table => $rows) {
-            if (!empty($rows)) {
-              $columns = array_keys($rows[0]);
-              $placeholders = ':' . implode(', :', $columns);
-              $sql = "INSERT OR REPLACE INTO $table (" . implode(', ', $columns) . ") VALUES ($placeholders)";
-              $stmt = $db->prepare($sql);
-              
-              foreach ($rows as $row) {
-                $stmt->execute($row);
+      if (!restored) {
+        // Fallback to JSON restore
+        const dbHandle = await siteDir.getFileHandle('database.json');
+        const dbFile = await dbHandle.getFile();
+        const dbData = JSON.parse(await dbFile.text());
+
+        // Restore database via PHP
+        await client.run({
+          code: `<?php
+          $import_data = json_decode('${JSON.stringify({}).replace(/'/g, "\\'")}', true);
+          $import_data = json_decode(file_get_contents('php://stdin'), true) ?: $import_data;
+          if (isset($import_data['database'])) {
+            $db = new PDO('sqlite:/wordpress/wp-content/database/.ht.sqlite');
+            foreach ($import_data['database'] as $table => $rows) {
+              if (!empty($rows)) {
+                $columns = array_keys($rows[0]);
+                $placeholders = ':' . implode(', :', $columns);
+                $sql = "INSERT OR REPLACE INTO $table (" . implode(', ', $columns) . ") VALUES ($placeholders)";
+                $stmt = $db->prepare($sql);
+                foreach ($rows as $row) { $stmt->execute($row); }
               }
             }
           }
-        }
-        
-        if (isset($import_data['wp_config'])) {
-          file_put_contents('/wordpress/wp-config.php', $import_data['wp_config']);
-        }
-        
-        echo "Database restored";
-        `
-      });
+          if (isset($import_data['wp_config'])) { file_put_contents('/wordpress/wp-config.php', $import_data['wp_config']); }
+          echo "Database restored";
+          `
+        });
+      }
 
       // Load and restore files
       try {

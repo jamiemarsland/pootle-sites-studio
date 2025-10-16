@@ -71,6 +71,50 @@ const Site = () => {
     };
   }, []);
 
+  // Autosave and lifecycle persistence: save on interval, tab hide, and before unload
+  useEffect(() => {
+    if (!playgroundClient || !site?.isInitialized || !user) return;
+
+    // More frequent autosave
+    if (!autoSaveIntervalRef.current) {
+      autoSaveIntervalRef.current = setInterval(() => {
+        triggerCloudSync();
+      }, 15000);
+    }
+
+    const handleVisibility = async () => {
+      if (document.hidden) {
+        try {
+          setSyncStatus('syncing');
+          await syncMemfsToOPFS(playgroundClient, site.id);
+          await uploadSiteToCloud(site.id, user.id);
+          await syncSiteMetadata(site, user.id);
+          setSyncStatus('synced');
+        } catch (err) {
+          console.error('Visibility save failed:', err);
+          setSyncStatus('error');
+        }
+      }
+    };
+
+    const handleBeforeUnload = () => {
+      // Best-effort save to OPFS to preserve local state
+      syncMemfsToOPFS(playgroundClient, site.id).catch(() => {});
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      if (autoSaveIntervalRef.current) {
+        clearInterval(autoSaveIntervalRef.current);
+        autoSaveIntervalRef.current = null as any;
+      }
+    };
+  }, [playgroundClient, site?.isInitialized, user]);
+
   useEffect(() => {
     // Keyboard shortcuts
     const handleKeyDown = (e: KeyboardEvent) => {
