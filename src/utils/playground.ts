@@ -36,7 +36,6 @@ export const initializePlayground = async (
       
       // Check for a durable marker indicating WordPress core is present in OPFS
       try {
-        // Prefer real core presence checks first
         await siteDir.getFileHandle('index.php', { create: false });
         hasLocalWordPress = true;
         console.log('Found WordPress core (index.php) in OPFS');
@@ -47,14 +46,7 @@ export const initializePlayground = async (
           hasLocalWordPress = true;
           console.log('Found WordPress core (wp-includes/version.php) in OPFS');
         } catch {
-          // Fallback to durable marker
-          try {
-            await siteDir.getFileHandle('core.marker', { create: false });
-            hasLocalWordPress = true;
-            console.log('Found WordPress core marker in OPFS');
-          } catch {
-            console.log('No WordPress core detected in OPFS');
-          }
+          console.log('No WordPress core detected in OPFS');
         }
       }
     } catch {

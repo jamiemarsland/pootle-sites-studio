@@ -79,7 +79,7 @@ const Site = () => {
     if (!autoSaveIntervalRef.current) {
       autoSaveIntervalRef.current = setInterval(() => {
         triggerCloudSync();
-      }, 15000);
+      }, 5000);
     }
 
     const handleVisibility = async () => {
