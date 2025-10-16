@@ -218,15 +218,13 @@ const Site = () => {
 
       setPlaygroundClient(client);
 
-      // For initialized sites, restore data from OPFS after WordPress is ready
-      if (site.isInitialized) {
-        try {
-          console.log('[Site] Restoring site data from OPFS...');
-          await syncOPFSToMemfs(client, site.id);
-          console.log('[Site] Data restored successfully');
-        } catch (restoreErr) {
-          console.warn('[Site] Could not restore from OPFS:', restoreErr);
-        }
+      // Restore any saved data from OPFS after WordPress is ready (always attempt)
+      try {
+        console.log('[Site] Attempting OPFS restore...');
+        await syncOPFSToMemfs(client, site.id);
+        console.log('[Site] OPFS restore (if data existed) complete');
+      } catch (restoreErr) {
+        console.warn('[Site] OPFS restore skipped or failed:', restoreErr);
       }
 
       // Update site title with fast retry mechanism
