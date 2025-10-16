@@ -259,29 +259,18 @@ export const syncOPFSToMemfs = async (
     const siteDir = await sitesDir.getDirectoryHandle(siteId, { create: false });
 
     try {
-      // Try SQL dump restore first
-      let restored = false;
+      // Restore database from JSON export (robust base64 embedding)
       try {
-        const sqlHandle = await siteDir.getFileHandle('database.sql');
-        const sqlFile = await sqlHandle.getFile();
-        const sql = await sqlFile.text();
-        if (typeof (client as any).importSQL === 'function') {
-          await (client as any).importSQL(sql);
-          restored = true;
-        }
-      } catch (_) {}
-
-      if (!restored) {
-        // Fallback to JSON restore
         const dbHandle = await siteDir.getFileHandle('database.json');
         const dbFile = await dbHandle.getFile();
-        const dbData = JSON.parse(await dbFile.text());
+        const dbText = await dbFile.text();
+        // Encode JSON safely for PHP
+        const base64Json = btoa(unescape(encodeURIComponent(dbText)));
 
-        // Restore database via PHP
         await client.run({
           code: `<?php
-          $import_data = json_decode('${JSON.stringify({}).replace(/'/g, "\\'")}', true);
-          $import_data = json_decode(file_get_contents('php://stdin'), true) ?: $import_data;
+          $json = base64_decode('${base64Json}');
+          $import_data = json_decode($json, true);
           if (isset($import_data['database'])) {
             $db = new PDO('sqlite:/wordpress/wp-content/database/.ht.sqlite');
             foreach ($import_data['database'] as $table => $rows) {
@@ -298,6 +287,8 @@ export const syncOPFSToMemfs = async (
           echo "Database restored";
           `
         });
+      } catch (restoreErr) {
+        console.warn('Could not restore database from OPFS:', restoreErr);
       }
 
       // Load and restore files
