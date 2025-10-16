@@ -180,7 +180,8 @@ export const syncMemfsToOPFS = async (
       // Save database export
       const dbHandle = await siteDir.getFileHandle('database.json', { create: true });
       const dbWritable = await dbHandle.createWritable();
-      await dbWritable.write(dbExport.text);
+      const exportText = typeof dbExport === 'string' ? dbExport : (dbExport && typeof dbExport.text !== 'undefined' ? dbExport.text : JSON.stringify(dbExport ?? {}));
+      await dbWritable.write(exportText);
       await dbWritable.close();
 
       // Export wp-content files
