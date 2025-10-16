@@ -89,7 +89,7 @@ export const deleteSite = async (siteId: string): Promise<void> => {
 
 // Generate unique site ID
 export const generateSiteId = (): string => {
-  return `site_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  return crypto.randomUUID();
 };
 
 // Get OPFS directory for a site
