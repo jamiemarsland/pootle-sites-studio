@@ -2,15 +2,19 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Loader2, AlertCircle, ExternalLink, Plus, ChevronDown, EyeOff, Eye } from 'lucide-react';
-import { getSiteMetadata, updateSite, requestPersistentStorage } from '@/utils/storage';
+import { requestPersistentStorage } from '@/utils/storage';
 import { initializePlayground } from '@/utils/playground';
 import { Site as SiteType } from '@/types/site';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
+import { syncSiteMetadata, uploadSiteToCloud, loadSitesFromCloud } from '@/utils/cloudSync';
+import SyncStatus, { SyncStatusType } from '@/components/SyncStatus';
 
 const Site = () => {
   const { siteId } = useParams<{ siteId: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user } = useAuth();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [site, setSite] = useState<SiteType | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -19,9 +23,11 @@ const Site = () => {
   const [playgroundClient, setPlaygroundClient] = useState<any>(null);
   const autoSaveIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [isTitleSyncing, setIsTitleSyncing] = useState(true);
+  const [syncStatus, setSyncStatus] = useState<SyncStatusType>('offline');
   const [isBarHidden, setIsBarHidden] = useState(() => {
     return localStorage.getItem('pootle-bar-hidden') === 'true';
   });
+  const syncDebounceRef = useRef<NodeJS.Timeout | null>(null);
 
   // Debug mode detection
   const isDebugMode = import.meta.env.DEV || 
@@ -43,6 +49,18 @@ const Site = () => {
       initializeWordPress();
     }
   }, [site, playgroundClient]);
+
+  // Set up periodic cloud sync when playground is ready
+  useEffect(() => {
+    if (!playgroundClient || !site?.isInitialized || !user) return;
+
+    // Sync to cloud every 30 seconds if there are changes
+    const syncInterval = setInterval(() => {
+      triggerCloudSync();
+    }, 30000);
+
+    return () => clearInterval(syncInterval);
+  }, [playgroundClient, site?.isInitialized, user]);
 
   useEffect(() => {
     // Cleanup on unmount
@@ -98,18 +116,26 @@ const Site = () => {
     }
   };
 
-  const loadSite = () => {
-    const metadata = getSiteMetadata();
-    const foundSite = metadata.sites.find(s => s.id === siteId);
+  const loadSite = async () => {
+    if (!user) return;
     
-    if (!foundSite) {
-      setError('Site not found');
-      setIsLoading(false);
-      return;
-    }
+    try {
+      const sites = await loadSitesFromCloud(user.id);
+      const foundSite = sites.find(s => s.id === siteId);
+      
+      if (!foundSite) {
+        setError('Site not found');
+        setIsLoading(false);
+        return;
+      }
 
-    setSite(foundSite);
-    setIsLoading(false);
+      setSite(foundSite);
+      setIsLoading(false);
+    } catch (error) {
+      console.error('Failed to load site:', error);
+      setError('Failed to load site');
+      setIsLoading(false);
+    }
   };
 
   const initializeWordPress = async () => {
@@ -183,20 +209,37 @@ echo get_option('blogname');
         }, 3000);
       }
 
-      if (!site.isInitialized) {
-        // Mark site as initialized after first OPFS sync
-        updateSite(site.id, { 
+      if (!site.isInitialized && user) {
+        // Mark site as initialized and sync to cloud
+        const updatedSite = {
+          ...site,
           isInitialized: true,
           lastModified: new Date().toISOString()
-        });
-        setSite(prev => prev ? { ...prev, isInitialized: true } : null);
+        };
+        
+        setSite(updatedSite);
+        
+        // Sync metadata and files to cloud
+        setTimeout(async () => {
+          try {
+            setSyncStatus('syncing');
+            await syncSiteMetadata(updatedSite, user.id);
+            await uploadSiteToCloud(site.id, user.id);
+            setSyncStatus('synced');
+          } catch (error) {
+            console.error('Cloud sync failed:', error);
+            setSyncStatus('error');
+          }
+        }, 2000); // Debounce initial sync
+        
         toast({
           title: 'Site ready',
-          description: `${site.title} has been initialized and persisted`,
+          description: `${site.title} has been initialized and synced to cloud`,
         });
         console.log('Site initialized and OPFS mounted');
       } else {
         toast({ title: 'Site loaded', description: 'Restored from OPFS' });
+        setSyncStatus('synced');
       }
 
       // Set up periodic OPFS diagnostics (debug mode only)
@@ -318,17 +361,45 @@ echo get_option('blogname');
     }
   };
 
+  const triggerCloudSync = async () => {
+    if (!user || !site) return;
+    
+    // Clear existing debounce timer
+    if (syncDebounceRef.current) {
+      clearTimeout(syncDebounceRef.current);
+    }
+    
+    // Debounce cloud sync by 5 seconds
+    syncDebounceRef.current = setTimeout(async () => {
+      try {
+        setSyncStatus('syncing');
+        await uploadSiteToCloud(site.id, user.id);
+        await syncSiteMetadata(site, user.id);
+        setSyncStatus('synced');
+      } catch (error) {
+        console.error('Cloud sync failed:', error);
+        setSyncStatus('error');
+      }
+    }, 5000);
+  };
+
   const handleManualSave = async () => {
     if (playgroundClient && site?.isInitialized) {
       await forceFlushToOPFS();
-      updateSite(site.id, { lastModified: new Date().toISOString() });
+      await triggerCloudSync();
     }
   };
 
   const handleBack = async () => {
-    // No manual save needed; OPFS syncs automatically
-    if (playgroundClient && site?.isInitialized) {
-      updateSite(site.id, { lastModified: new Date().toISOString() });
+    // Ensure final sync before leaving
+    if (playgroundClient && site?.isInitialized && user) {
+      try {
+        setSyncStatus('syncing');
+        await uploadSiteToCloud(site.id, user.id);
+        await syncSiteMetadata(site, user.id);
+      } catch (error) {
+        console.error('Final sync failed:', error);
+      }
     }
     navigate('/');
   };
@@ -380,7 +451,7 @@ echo get_option('blogname');
     <div className="h-screen bg-background flex flex-col overflow-hidden">
       {/* Visible Pootle Sites Tab */}
       {!isBarHidden && (
-        <div className="fixed top-0 left-1/2 -translate-x-1/2 z-[60] mt-0.5 flex items-center gap-1 rounded-b-lg bg-card/90 backdrop-blur border border-border px-2 py-0.5 text-xs text-foreground shadow-md transition-all duration-300">
+        <div className="fixed top-0 left-1/2 -translate-x-1/2 z-[60] mt-0.5 flex items-center gap-2 rounded-b-lg bg-card/90 backdrop-blur border border-border px-2 py-0.5 text-xs text-foreground shadow-md transition-all duration-300">
           <button
             type="button"
             className="flex items-center gap-1 hover:bg-accent hover:text-accent-foreground transition-colors rounded px-1 py-0.5"
@@ -390,6 +461,21 @@ echo get_option('blogname');
             <ChevronDown className="h-3 w-3" aria-hidden="true" />
             <span>Back to Pootle Sites</span>
           </button>
+          
+          <div className="border-l border-border h-4" />
+          
+          <SyncStatus status={syncStatus} className="px-1" />
+          
+          {syncStatus === 'error' && (
+            <button
+              type="button"
+              className="text-xs px-1 py-0.5 hover:bg-accent hover:text-accent-foreground transition-colors rounded"
+              onClick={handleManualSave}
+            >
+              Retry
+            </button>
+          )}
+          
           <button
             type="button"
             className="ml-1 p-0.5 hover:bg-accent hover:text-accent-foreground transition-colors rounded"

@@ -4,32 +4,58 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { SiteCard } from '@/components/SiteCard';
-
+import { useAuth } from '@/contexts/AuthContext';
 import { Site } from '@/types/site';
-import { getSiteMetadata, addSite, generateSiteId, requestPersistentStorage } from '@/utils/storage';
-import { Plus } from 'lucide-react';
+import { generateSiteId, requestPersistentStorage } from '@/utils/storage';
+import { loadSitesFromCloud, syncSiteMetadata, initialCloudSync } from '@/utils/cloudSync';
+import { Plus, LogOut } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user, signOut } = useAuth();
   const [sites, setSites] = useState<Site[]>([]);
   const [showNewSiteDialog, setShowNewSiteDialog] = useState(false);
   const [newSiteTitle, setNewSiteTitle] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasInitialSynced, setHasInitialSynced] = useState(false);
 
   useEffect(() => {
     loadSites();
     requestPersistentStorage();
-  }, []);
+  }, [user]);
 
-  const loadSites = () => {
-    const metadata = getSiteMetadata();
-    setSites(metadata.sites);
+  const loadSites = async () => {
+    if (!user) return;
+    
+    setIsLoading(true);
+    try {
+      // Load sites from cloud
+      const cloudSites = await loadSitesFromCloud(user.id);
+      setSites(cloudSites);
+
+      // On first load, sync cloud sites to local OPFS
+      if (!hasInitialSynced && cloudSites.length > 0) {
+        await initialCloudSync(user.id);
+        setHasInitialSynced(true);
+      }
+    } catch (error) {
+      console.error('Failed to load sites:', error);
+      toast({
+        title: 'Failed to load sites',
+        description: 'Could not sync sites from cloud',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleCreateSite = async () => {
-    if (!newSiteTitle.trim()) return;
+    if (!newSiteTitle.trim() || !user) return;
 
     setIsCreating(true);
     try {
@@ -39,11 +65,12 @@ const Dashboard = () => {
         title: newSiteTitle.trim(),
         createdAt: new Date().toISOString(),
         lastModified: new Date().toISOString(),
-        isInitialized: false // Fresh site; will install WP then sync memfs -> OPFS on first open
+        isInitialized: false
       };
 
-      addSite(newSite);
-      loadSites();
+      // Sync to cloud immediately
+      await syncSiteMetadata(newSite, user.id);
+      await loadSites();
       
       toast({
         title: 'Site created',
@@ -66,6 +93,11 @@ const Dashboard = () => {
     }
   };
 
+  const handleLogout = async () => {
+    await signOut();
+    navigate('/auth');
+  };
+
   return (
     <div className="min-h-screen bg-gradient-blueprint-dark blueprint-bg">
       {/* Header */}
@@ -81,7 +113,6 @@ const Dashboard = () => {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              
               {sites.length > 0 && (
                 <Button 
                   onClick={() => setShowNewSiteDialog(true)}
@@ -91,6 +122,24 @@ const Dashboard = () => {
                   New Site
                 </Button>
               )}
+              
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="blueprint-button-secondary">
+                    {user?.email}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem disabled className="text-xs text-muted-foreground">
+                    {user?.email}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleLogout}>
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Logout
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </div>
@@ -98,7 +147,11 @@ const Dashboard = () => {
 
       {/* Main Content */}
       <main className="container mx-auto px-6 py-8">
-        {sites.length === 0 ? (
+        {isLoading ? (
+          <div className="text-center py-16">
+            <p className="text-muted-foreground">Loading your sites...</p>
+          </div>
+        ) : sites.length === 0 ? (
           /* Empty State */
           <div className="text-center py-16">
             <h2 className="text-3xl font-bold text-foreground mb-4">

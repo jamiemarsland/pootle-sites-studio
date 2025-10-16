@@ -14,7 +14,68 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      profiles: {
+        Row: {
+          created_at: string | null
+          email: string
+          id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email: string
+          id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email?: string
+          id?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      sites: {
+        Row: {
+          cloud_storage_path: string | null
+          created_at: string | null
+          id: string
+          is_initialized: boolean | null
+          last_modified: string | null
+          last_synced_at: string | null
+          title: string
+          user_id: string
+        }
+        Insert: {
+          cloud_storage_path?: string | null
+          created_at?: string | null
+          id?: string
+          is_initialized?: boolean | null
+          last_modified?: string | null
+          last_synced_at?: string | null
+          title: string
+          user_id: string
+        }
+        Update: {
+          cloud_storage_path?: string | null
+          created_at?: string | null
+          id?: string
+          is_initialized?: boolean | null
+          last_modified?: string | null
+          last_synced_at?: string | null
+          title?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sites_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
