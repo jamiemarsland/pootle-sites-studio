@@ -7,7 +7,7 @@ import { initializePlayground } from '@/utils/playground';
 import { Site as SiteType } from '@/types/site';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import { syncSiteMetadata, uploadSiteToCloud, loadSitesFromCloud } from '@/utils/cloudSync';
+import { syncSiteMetadata, uploadSiteToCloud, loadSitesFromCloud, downloadSiteFromCloud } from '@/utils/cloudSync';
 import SyncStatus, { SyncStatusType } from '@/components/SyncStatus';
 
 const Site = () => {
@@ -127,6 +127,16 @@ const Site = () => {
         setError('Site not found');
         setIsLoading(false);
         return;
+      }
+
+      // Download site files from cloud to local OPFS before initializing
+      console.log(`[Site] Downloading files for site ${foundSite.id} from cloud...`);
+      try {
+        await downloadSiteFromCloud(foundSite.id, user.id);
+        console.log(`[Site] Files downloaded successfully`);
+      } catch (downloadError) {
+        console.error('[Site] Failed to download files from cloud:', downloadError);
+        // Continue anyway - might be a new site or files might already be local
       }
 
       setSite(foundSite);
