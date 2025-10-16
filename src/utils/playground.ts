@@ -34,19 +34,13 @@ export const initializePlayground = async (
       const sitesDir = await wpStudioDir.getDirectoryHandle('sites', { create: false });
       const siteDir = await sitesDir.getDirectoryHandle(siteId, { create: false });
       
-      // Determine if OPFS already has a WordPress install by checking for any entries
+      // Check for a durable marker indicating WordPress core is present in OPFS
       try {
-        for await (const _ of (siteDir as any).entries()) {
-          hasLocalWordPress = true;
-          break;
-        }
-        if (hasLocalWordPress) {
-          console.log('Found WordPress data in local OPFS');
-        } else {
-          console.log('No WordPress data in local OPFS');
-        }
+        await siteDir.getFileHandle('core.marker', { create: false });
+        hasLocalWordPress = true;
+        console.log('Found WordPress core marker in OPFS');
       } catch {
-        console.log('Could not enumerate OPFS site directory');
+        console.log('No WordPress core marker in OPFS');
       }
     } catch {
       console.log('OPFS site directory does not exist yet');
@@ -84,6 +78,23 @@ export const initializePlayground = async (
 
     if (typeof (client as any).isReady === 'function') {
       await (client as any).isReady();
+    }
+
+    // After initial install + mount, create a durable core marker in OPFS for future boots
+    if (!hasLocalWordPress) {
+      try {
+        const opfsRoot = await navigator.storage.getDirectory();
+        const wpStudioDir = await opfsRoot.getDirectoryHandle('wp-studio', { create: true });
+        const sitesDir = await wpStudioDir.getDirectoryHandle('sites', { create: true });
+        const siteDir = await sitesDir.getDirectoryHandle(siteId, { create: true });
+        const markerHandle = await siteDir.getFileHandle('core.marker', { create: true });
+        const markerWritable = await markerHandle.createWritable();
+        await markerWritable.write(JSON.stringify({ createdAt: new Date().toISOString() }));
+        await markerWritable.close();
+        console.log('Created OPFS WordPress core marker');
+      } catch (e) {
+        console.warn('Failed to write core marker:', e);
+      }
     }
 
     console.log('WordPress Playground initialized with OPFS mount');
