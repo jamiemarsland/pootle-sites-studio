@@ -140,7 +140,8 @@ export const syncMemfsToOPFS = async (
     
     // Get the site's OPFS directory
     const opfsRoot = await navigator.storage.getDirectory();
-    const sitesDir = await opfsRoot.getDirectoryHandle('wp-studio/sites', { create: true });
+    const wpStudioDir = await opfsRoot.getDirectoryHandle('wp-studio', { create: true });
+    const sitesDir = await wpStudioDir.getDirectoryHandle('sites', { create: true });
     const siteDir = await sitesDir.getDirectoryHandle(siteId, { create: true });
 
     // Export the WordPress database and files
@@ -225,7 +226,8 @@ export const syncOPFSToMemfs = async (
     
     // Get the site's OPFS directory
     const opfsRoot = await navigator.storage.getDirectory();
-    const sitesDir = await opfsRoot.getDirectoryHandle('wp-studio/sites', { create: false });
+    const wpStudioDir = await opfsRoot.getDirectoryHandle('wp-studio', { create: false });
+    const sitesDir = await wpStudioDir.getDirectoryHandle('sites', { create: false });
     const siteDir = await sitesDir.getDirectoryHandle(siteId, { create: false });
 
     try {

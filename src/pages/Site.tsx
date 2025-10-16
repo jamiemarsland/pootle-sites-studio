@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Loader2, AlertCircle, ExternalLink, Plus, ChevronDown, EyeOff, Eye } from 'lucide-react';
 import { requestPersistentStorage } from '@/utils/storage';
-import { initializePlayground } from '@/utils/playground';
+import { initializePlayground, syncOPFSToMemfs } from '@/utils/playground';
 import { Site as SiteType } from '@/types/site';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -164,6 +164,13 @@ const Site = () => {
         site.isInitialized
       );
 
+      // Restore any saved data (database/files) from OPFS into the playground
+      try {
+        await syncOPFSToMemfs(client, site.id);
+      } catch (restoreErr) {
+        console.warn('OPFS->memfs restore skipped:', restoreErr);
+      }
+
       setPlaygroundClient(client);
 
       // Update site title with fast retry mechanism
@@ -266,12 +273,48 @@ echo get_option('blogname');
 
     } catch (error) {
       console.error('Failed to initialize WordPress:', error);
-      setError('Failed to initialize WordPress. Please try again.');
-      toast({
-        title: 'Initialization failed',
-        description: 'Could not start WordPress. Please check your browser compatibility.',
-        variant: 'destructive',
-      });
+
+      // Retry once by forcing a fresh install, then import saved data
+      try {
+        console.log('Retrying initialization with fresh install...');
+        const client = await initializePlayground(
+          iframeRef.current,
+          site.id,
+          false // force install
+        );
+        try {
+          await syncOPFSToMemfs(client, site.id);
+        } catch (restoreErr) {
+          console.warn('OPFS->memfs restore skipped on retry:', restoreErr);
+        }
+        setPlaygroundClient(client);
+        // Kick off title sync after retry
+        setTimeout(() => {
+          (async () => {
+            try {
+              const phpCode = `<?php
+require_once '/wordpress/wp-load.php';
+update_option('blogname', ${JSON.stringify(site.title)});
+update_option('blogdescription', 'A Pootle site');
+wp_cache_flush();
+echo get_option('blogname');
+?>`;
+              await client.run({ code: phpCode });
+              setTimeout(() => setIsTitleSyncing(false), 500);
+            } catch (e) {
+              setTimeout(() => setIsTitleSyncing(false), 500);
+            }
+          })();
+        }, 300);
+      } catch (retryErr) {
+        console.error('Retry initialization failed:', retryErr);
+        setError('Failed to initialize WordPress. Please try again.');
+        toast({
+          title: 'Initialization failed',
+          description: 'Could not start WordPress. Please check your browser compatibility.',
+          variant: 'destructive',
+        });
+      }
     } finally {
       setIsInitializing(false);
     }
@@ -305,7 +348,8 @@ echo get_option('blogname');
     try {
       console.log('=== OPFS Contents Check ===');
       const opfsRoot = await navigator.storage.getDirectory();
-      const sitesDir = await opfsRoot.getDirectoryHandle('wp-studio/sites', { create: false });
+      const wpStudioDir = await opfsRoot.getDirectoryHandle('wp-studio', { create: false });
+      const sitesDir = await wpStudioDir.getDirectoryHandle('sites', { create: false });
       const siteDir = await sitesDir.getDirectoryHandle(siteId, { create: false });
       
       console.log('Site directory exists in OPFS');
