@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Loader2, AlertCircle, ExternalLink, Plus, ChevronDown, EyeOff, Eye } from 'lucide-react';
 import { requestPersistentStorage } from '@/utils/storage';
-import { initializePlayground, syncOPFSToMemfs } from '@/utils/playground';
+import { initializePlayground, syncOPFSToMemfs, syncMemfsToOPFS } from '@/utils/playground';
 import { Site as SiteType } from '@/types/site';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -164,14 +164,18 @@ const Site = () => {
         site.isInitialized
       );
 
-      // Restore any saved data (database/files) from OPFS into the playground
-      try {
-        await syncOPFSToMemfs(client, site.id);
-      } catch (restoreErr) {
-        console.warn('OPFS->memfs restore skipped:', restoreErr);
-      }
-
       setPlaygroundClient(client);
+
+      // For initialized sites, restore data from OPFS after WordPress is ready
+      if (site.isInitialized) {
+        try {
+          console.log('[Site] Restoring site data from OPFS...');
+          await syncOPFSToMemfs(client, site.id);
+          console.log('[Site] Data restored successfully');
+        } catch (restoreErr) {
+          console.warn('[Site] Could not restore from OPFS:', restoreErr);
+        }
+      }
 
       // Update site title with fast retry mechanism
       const updateSiteTitle = async (attempt = 1) => {
@@ -240,6 +244,8 @@ echo get_option('blogname');
         setTimeout(async () => {
           try {
             setSyncStatus('syncing');
+            // First save to OPFS, then upload to cloud
+            await syncMemfsToOPFS(client, site.id);
             await syncSiteMetadata(updatedSite, user.id);
             await uploadSiteToCloud(site.id, user.id);
             setSyncStatus('synced');
@@ -416,7 +422,7 @@ echo get_option('blogname');
   };
 
   const triggerCloudSync = async () => {
-    if (!user || !site) return;
+    if (!user || !site || !playgroundClient) return;
     
     // Clear existing debounce timer
     if (syncDebounceRef.current) {
@@ -427,6 +433,8 @@ echo get_option('blogname');
     syncDebounceRef.current = setTimeout(async () => {
       try {
         setSyncStatus('syncing');
+        // Save to OPFS first, then upload to cloud
+        await syncMemfsToOPFS(playgroundClient, site.id);
         await uploadSiteToCloud(site.id, user.id);
         await syncSiteMetadata(site, user.id);
         setSyncStatus('synced');
@@ -449,6 +457,8 @@ echo get_option('blogname');
     if (playgroundClient && site?.isInitialized && user) {
       try {
         setSyncStatus('syncing');
+        // Save to OPFS first, then upload to cloud
+        await syncMemfsToOPFS(playgroundClient, site.id);
         await uploadSiteToCloud(site.id, user.id);
         await syncSiteMetadata(site, user.id);
       } catch (error) {
