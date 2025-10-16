@@ -26,26 +26,41 @@ export const initializePlayground = async (
   try {
     console.log(`Initializing WordPress Playground for site: ${siteId}`);
 
-    const mountDescriptor: any = {
-      device: {
-        type: 'opfs',
-        path: `wp-studio/sites/${siteId}`,
-      },
-      mountpoint: '/wordpress',
-      initialSyncDirection: isInitialized ? 'opfs-to-memfs' : 'memfs-to-opfs',
-    };
+    // Check if WordPress actually exists in local OPFS
+    let hasLocalWordPress = false;
+    try {
+      const opfsRoot = await navigator.storage.getDirectory();
+      const wpStudioDir = await opfsRoot.getDirectoryHandle('wp-studio', { create: false });
+      const sitesDir = await wpStudioDir.getDirectoryHandle('sites', { create: false });
+      const siteDir = await sitesDir.getDirectoryHandle(siteId, { create: false });
+      
+      // Check if we have WordPress files in OPFS (database.json or files.json from cloud)
+      try {
+        await siteDir.getFileHandle('database.json', { create: false });
+        hasLocalWordPress = true;
+        console.log('Found WordPress data in local OPFS');
+      } catch {
+        console.log('No WordPress data in local OPFS');
+      }
+    } catch {
+      console.log('OPFS site directory does not exist yet');
+    }
 
-    // Try OPFS first, fallback to localStorage for deployed environments
+    // If the site is initialized but we don't have local WordPress files,
+    // we need to do a fresh install and then restore from cloud
+    const needsFreshInstall = !hasLocalWordPress;
+    
+    console.log(`WordPress installation needed: ${needsFreshInstall}`);
+
     let client;
-    let useOPFS = true;
     
     try {
       client = await startPlaygroundWeb({
         iframe,
         remoteUrl: `https://playground.wordpress.net/remote.html`,
         blueprint: PLAYGROUND_CONFIG.blueprint,
-        shouldInstallWordPress: !isInitialized,
-        mounts: isInitialized ? [mountDescriptor] : [],
+        shouldInstallWordPress: needsFreshInstall,
+        mounts: [],
       });
 
       // Wait until Playground is fully ready
@@ -53,24 +68,21 @@ export const initializePlayground = async (
         await (client as any).isReady();
       }
 
-      // On first launch, mount OPFS after WordPress installs to run memfs -> opfs
-      if (!isInitialized && typeof (client as any).mountOpfs === 'function') {
-        await (client as any).mountOpfs(mountDescriptor);
-        console.log('Mounted OPFS and synced memfs -> OPFS for initial install');
-      }
-    } catch (opfsError) {
-      console.warn('OPFS mount failed, using localStorage fallback:', opfsError);
-      useOPFS = false;
+      console.log('WordPress Playground initialized successfully');
+      return client;
+    } catch (error) {
+      console.error('Failed to initialize playground:', error);
       
-      // Initialize without OPFS
+      // Fallback to localStorage if OPFS fails completely
+      console.warn('Trying localStorage fallback...');
+      
       client = await startPlaygroundWeb({
         iframe,
         remoteUrl: `https://playground.wordpress.net/remote.html`,
         blueprint: PLAYGROUND_CONFIG.blueprint,
-        shouldInstallWordPress: !isInitialized,
+        shouldInstallWordPress: needsFreshInstall,
       });
 
-      // Wait until ready
       if (typeof (client as any).isReady === 'function') {
         await (client as any).isReady();
       }
@@ -102,7 +114,6 @@ export const initializePlayground = async (
           const database = await client.exportSQL();
           const files: Record<string, string> = {};
           
-          // Save essential files
           try {
             const wpConfig = await client.readFile('/wordpress/wp-config.php');
             files['/wordpress/wp-config.php'] = wpConfig;
@@ -115,15 +126,12 @@ export const initializePlayground = async (
         }
       };
       
-      // Save every 30 seconds
       setInterval(saveToLocalStorage, 30000);
-      
-      // Save on page unload
       window.addEventListener('beforeunload', saveToLocalStorage);
+      
+      console.log('WordPress Playground initialized with localStorage fallback');
+      return client;
     }
-
-    console.log('WordPress Playground initialized successfully');
-    return client;
   } catch (error) {
     console.error('Failed to initialize WordPress Playground:', error);
     throw error;
