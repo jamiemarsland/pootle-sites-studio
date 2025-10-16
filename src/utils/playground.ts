@@ -154,52 +154,47 @@ export const syncMemfsToOPFS = async (
 
     // Export the WordPress database and files
     try {
-      // Prefer native SQL export if available
-      let sqlDump: string | null = null;
+      // Use native exportWXR for WordPress content export
+      let contentExported = false;
+      
       try {
-        if (typeof (client as any).exportSQL === 'function') {
-          sqlDump = await (client as any).exportSQL();
+        // Try WordPress XML export (WXR) which preserves all content
+        const wxrExport = await client.run({
+          code: `<?php
+require_once '/wordpress/wp-load.php';
+require_once '/wordpress/wp-admin/includes/export.php';
+ob_start();
+export_wp();
+$wxr = ob_get_clean();
+echo $wxr;
+?>`
+        });
+        
+        const wxrText = typeof wxrExport === 'string' ? wxrExport : ((wxrExport as any).text || '');
+        if (wxrText.length > 100) {
+          const wxrHandle = await siteDir.getFileHandle('content.wxr', { create: true });
+          const wxrWritable = await wxrHandle.createWritable();
+          await wxrWritable.write(wxrText);
+          await wxrWritable.close();
+          contentExported = true;
+          console.log('Exported WordPress content as WXR');
         }
-      } catch (e) {
-        console.warn('exportSQL not available, falling back to PHP exporter:', e);
+      } catch (wxrError) {
+        console.warn('WXR export failed, trying direct database copy:', wxrError);
       }
 
-      if (sqlDump) {
-        // Save SQL dump
-        const sqlHandle = await siteDir.getFileHandle('database.sql', { create: true });
-        const sqlWritable = await sqlHandle.createWritable();
-        await sqlWritable.write(sqlDump);
-        await sqlWritable.close();
-      } else {
-        // Fallback: export via PHP and save as JSON
-        const dbExport = await client.run({
-          code: `<?php
-          $export_data = array();
-          
-          // Export database
-          $db = new PDO('sqlite:/wordpress/wp-content/database/.ht.sqlite');
-          $tables = $db->query("SELECT name FROM sqlite_master WHERE type='table'")->fetchAll(PDO::FETCH_COLUMN);
-          
-          foreach ($tables as $table) {
-            $rows = $db->query("SELECT * FROM $table")->fetchAll(PDO::FETCH_ASSOC);
-            $export_data['database'][$table] = $rows;
-          }
-          
-          // Export wp-config.php
-          if (file_exists('/wordpress/wp-config.php')) {
-            $export_data['wp_config'] = file_get_contents('/wordpress/wp-config.php');
-          }
-          
-          echo json_encode($export_data);
-          `
-        });
-
-        // Save database export JSON
-        const dbHandle = await siteDir.getFileHandle('database.json', { create: true });
-        const dbWritable = await dbHandle.createWritable();
-        const exportText = typeof dbExport === 'string' ? dbExport : ((dbExport && (dbExport as any).text !== undefined) ? (dbExport as any).text : JSON.stringify(dbExport ?? {}));
-        await dbWritable.write(exportText);
-        await dbWritable.close();
+      // Also save the raw SQLite database file as backup
+      if (!contentExported) {
+        try {
+          const dbFileContent = await client.readFileAsBuffer('/wordpress/wp-content/database/.ht.sqlite');
+          const dbHandle = await siteDir.getFileHandle('database.sqlite', { create: true });
+          const dbWritable = await dbHandle.createWritable();
+          await dbWritable.write(dbFileContent);
+          await dbWritable.close();
+          console.log('Saved SQLite database file');
+        } catch (dbError) {
+          console.warn('Database file save failed:', dbError);
+        }
       }
 
 
@@ -259,36 +254,45 @@ export const syncOPFSToMemfs = async (
     const siteDir = await sitesDir.getDirectoryHandle(siteId, { create: false });
 
     try {
-      // Restore database from JSON export (robust base64 embedding)
+      // Restore from WXR content export or SQLite database
       try {
-        const dbHandle = await siteDir.getFileHandle('database.json');
-        const dbFile = await dbHandle.getFile();
-        const dbText = await dbFile.text();
-        // Encode JSON safely for PHP
-        const base64Json = btoa(unescape(encodeURIComponent(dbText)));
-
-        await client.run({
-          code: `<?php
-          $json = base64_decode('${base64Json}');
-          $import_data = json_decode($json, true);
-          if (isset($import_data['database'])) {
-            $db = new PDO('sqlite:/wordpress/wp-content/database/.ht.sqlite');
-            foreach ($import_data['database'] as $table => $rows) {
-              if (!empty($rows)) {
-                $columns = array_keys($rows[0]);
-                $placeholders = ':' . implode(', :', $columns);
-                $sql = "INSERT OR REPLACE INTO $table (" . implode(', ', $columns) . ") VALUES ($placeholders)";
-                $stmt = $db->prepare($sql);
-                foreach ($rows as $row) { $stmt->execute($row); }
-              }
-            }
+        // First try WXR import
+        try {
+          const wxrHandle = await siteDir.getFileHandle('content.wxr');
+          const wxrFile = await wxrHandle.getFile();
+          const wxr = await wxrFile.text();
+          
+          if (wxr.length > 100) {
+            // Write WXR to temp file and import
+            await client.writeFile('/tmp/import.xml', wxr);
+            await client.run({
+              code: `<?php
+require_once '/wordpress/wp-load.php';
+require_once '/wordpress/wp-admin/includes/import.php';
+require_once '/wordpress/wp-admin/includes/post.php';
+require_once '/wordpress/wp-admin/includes/comment.php';
+require_once '/wordpress/wp-admin/includes/taxonomy.php';
+if (!defined('WP_LOAD_IMPORTERS')) define('WP_LOAD_IMPORTERS', true);
+require_once '/wordpress/wp-content/plugins/wordpress-importer/wordpress-importer.php';
+$importer = new WP_Import();
+$importer->import('/tmp/import.xml');
+echo 'Content restored from WXR';
+?>`
+            });
+            console.log('Restored from WXR export');
           }
-          if (isset($import_data['wp_config'])) { file_put_contents('/wordpress/wp-config.php', $import_data['wp_config']); }
-          echo "Database restored";
-          `
-        });
+        } catch (wxrErr) {
+          console.warn('WXR restore failed, trying database file:', wxrErr);
+          
+          // Try restoring raw database file
+          const dbHandle = await siteDir.getFileHandle('database.sqlite');
+          const dbFile = await dbHandle.getFile();
+          const dbBuffer = await dbFile.arrayBuffer();
+          await client.writeFile('/wordpress/wp-content/database/.ht.sqlite', new Uint8Array(dbBuffer));
+          console.log('Restored SQLite database file');
+        }
       } catch (restoreErr) {
-        console.warn('Could not restore database from OPFS:', restoreErr);
+        console.warn('Could not restore WordPress content:', restoreErr);
       }
 
       // Load and restore files
