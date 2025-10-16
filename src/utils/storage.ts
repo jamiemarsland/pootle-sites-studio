@@ -79,8 +79,7 @@ export const deleteSite = async (siteId: string): Promise<void> => {
   // Remove OPFS directory
   try {
     const opfsRoot = await navigator.storage.getDirectory();
-    const wpStudioDir = await opfsRoot.getDirectoryHandle('wp-studio', { create: false });
-    const sitesDir = await wpStudioDir.getDirectoryHandle('sites', { create: false });
+    const sitesDir = await opfsRoot.getDirectoryHandle(SITES_ROOT_DIR, { create: false });
     await sitesDir.removeEntry(siteId, { recursive: true });
     console.log(`Deleted OPFS directory for site: ${siteId}`);
   } catch (error) {
@@ -90,14 +89,12 @@ export const deleteSite = async (siteId: string): Promise<void> => {
 
 // Generate unique site ID
 export const generateSiteId = (): string => {
-  return crypto.randomUUID();
+  return `site_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 };
 
 // Get OPFS directory for a site
 export const getSiteOPFSDirectory = async (siteId: string): Promise<FileSystemDirectoryHandle> => {
   const opfsRoot = await navigator.storage.getDirectory();
-  // Create nested directories step by step (can't use paths with slashes)
-  const wpStudioDir = await opfsRoot.getDirectoryHandle('wp-studio', { create: true });
-  const sitesDir = await wpStudioDir.getDirectoryHandle('sites', { create: true });
+  const sitesDir = await opfsRoot.getDirectoryHandle(SITES_ROOT_DIR, { create: true });
   return await sitesDir.getDirectoryHandle(siteId, { create: true });
 };

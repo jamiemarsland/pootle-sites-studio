@@ -3,11 +3,11 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Loader2, AlertCircle, ExternalLink, Plus, ChevronDown, EyeOff, Eye } from 'lucide-react';
 import { requestPersistentStorage } from '@/utils/storage';
-import { initializePlayground, syncOPFSToMemfs, syncMemfsToOPFS } from '@/utils/playground';
+import { initializePlayground } from '@/utils/playground';
 import { Site as SiteType } from '@/types/site';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import { syncSiteMetadata, uploadSiteToCloud, loadSitesFromCloud, downloadSiteFromCloud } from '@/utils/cloudSync';
+import { syncSiteMetadata, uploadSiteToCloud, loadSitesFromCloud } from '@/utils/cloudSync';
 import SyncStatus, { SyncStatusType } from '@/components/SyncStatus';
 
 const Site = () => {
@@ -71,50 +71,6 @@ const Site = () => {
     };
   }, []);
 
-  // Autosave and lifecycle persistence: save on interval, tab hide, and before unload
-  useEffect(() => {
-    if (!playgroundClient || !site?.isInitialized || !user) return;
-
-    // More frequent autosave
-    if (!autoSaveIntervalRef.current) {
-      autoSaveIntervalRef.current = setInterval(() => {
-        triggerCloudSync();
-      }, 5000);
-    }
-
-    const handleVisibility = async () => {
-      if (document.hidden) {
-        try {
-          setSyncStatus('syncing');
-          await syncMemfsToOPFS(playgroundClient, site.id);
-          await uploadSiteToCloud(site.id, user.id);
-          await syncSiteMetadata(site, user.id);
-          setSyncStatus('synced');
-        } catch (err) {
-          console.error('Visibility save failed:', err);
-          setSyncStatus('error');
-        }
-      }
-    };
-
-    const handleBeforeUnload = () => {
-      // Best-effort save to OPFS to preserve local state
-      syncMemfsToOPFS(playgroundClient, site.id).catch(() => {});
-    };
-
-    document.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('beforeunload', handleBeforeUnload);
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibility);
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      if (autoSaveIntervalRef.current) {
-        clearInterval(autoSaveIntervalRef.current);
-        autoSaveIntervalRef.current = null as any;
-      }
-    };
-  }, [playgroundClient, site?.isInitialized, user]);
-
   useEffect(() => {
     // Keyboard shortcuts
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -173,24 +129,6 @@ const Site = () => {
         return;
       }
 
-      // Download site files from cloud to local OPFS before initializing
-      console.log(`[Site] Downloading files for site ${foundSite.id} from cloud...`);
-      
-      // Only download if the site is initialized (has data to download)
-      if (foundSite.isInitialized) {
-        try {
-          await downloadSiteFromCloud(foundSite.id, user.id);
-          console.log(`[Site] Files downloaded successfully`);
-        } catch (downloadError) {
-          console.error('[Site] Failed to download files from cloud:', downloadError);
-          setError('Failed to load site data from cloud. The site may not be synced yet.');
-          setIsLoading(false);
-          return;
-        }
-      } else {
-        console.log(`[Site] New site - skipping cloud download`);
-      }
-
       setSite(foundSite);
       setIsLoading(false);
     } catch (error) {
@@ -217,15 +155,6 @@ const Site = () => {
       );
 
       setPlaygroundClient(client);
-
-      // Restore any saved data from OPFS after WordPress is ready (always attempt)
-      try {
-        console.log('[Site] Attempting OPFS restore...');
-        await syncOPFSToMemfs(client, site.id);
-        console.log('[Site] OPFS restore (if data existed) complete');
-      } catch (restoreErr) {
-        console.warn('[Site] OPFS restore skipped or failed:', restoreErr);
-      }
 
       // Update site title with fast retry mechanism
       const updateSiteTitle = async (attempt = 1) => {
@@ -294,8 +223,6 @@ echo get_option('blogname');
         setTimeout(async () => {
           try {
             setSyncStatus('syncing');
-            // First save to OPFS, then upload to cloud
-            await syncMemfsToOPFS(client, site.id);
             await syncSiteMetadata(updatedSite, user.id);
             await uploadSiteToCloud(site.id, user.id);
             setSyncStatus('synced');
@@ -329,48 +256,12 @@ echo get_option('blogname');
 
     } catch (error) {
       console.error('Failed to initialize WordPress:', error);
-
-      // Retry once by forcing a fresh install, then import saved data
-      try {
-        console.log('Retrying initialization with fresh install...');
-        const client = await initializePlayground(
-          iframeRef.current,
-          site.id,
-          false // force install
-        );
-        try {
-          await syncOPFSToMemfs(client, site.id);
-        } catch (restoreErr) {
-          console.warn('OPFS->memfs restore skipped on retry:', restoreErr);
-        }
-        setPlaygroundClient(client);
-        // Kick off title sync after retry
-        setTimeout(() => {
-          (async () => {
-            try {
-              const phpCode = `<?php
-require_once '/wordpress/wp-load.php';
-update_option('blogname', ${JSON.stringify(site.title)});
-update_option('blogdescription', 'A Pootle site');
-wp_cache_flush();
-echo get_option('blogname');
-?>`;
-              await client.run({ code: phpCode });
-              setTimeout(() => setIsTitleSyncing(false), 500);
-            } catch (e) {
-              setTimeout(() => setIsTitleSyncing(false), 500);
-            }
-          })();
-        }, 300);
-      } catch (retryErr) {
-        console.error('Retry initialization failed:', retryErr);
-        setError('Failed to initialize WordPress. Please try again.');
-        toast({
-          title: 'Initialization failed',
-          description: 'Could not start WordPress. Please check your browser compatibility.',
-          variant: 'destructive',
-        });
-      }
+      setError('Failed to initialize WordPress. Please try again.');
+      toast({
+        title: 'Initialization failed',
+        description: 'Could not start WordPress. Please check your browser compatibility.',
+        variant: 'destructive',
+      });
     } finally {
       setIsInitializing(false);
     }
@@ -404,8 +295,7 @@ echo get_option('blogname');
     try {
       console.log('=== OPFS Contents Check ===');
       const opfsRoot = await navigator.storage.getDirectory();
-      const wpStudioDir = await opfsRoot.getDirectoryHandle('wp-studio', { create: false });
-      const sitesDir = await wpStudioDir.getDirectoryHandle('sites', { create: false });
+      const sitesDir = await opfsRoot.getDirectoryHandle('wp-studio/sites', { create: false });
       const siteDir = await sitesDir.getDirectoryHandle(siteId, { create: false });
       
       console.log('Site directory exists in OPFS');
@@ -472,7 +362,7 @@ echo get_option('blogname');
   };
 
   const triggerCloudSync = async () => {
-    if (!user || !site || !playgroundClient) return;
+    if (!user || !site) return;
     
     // Clear existing debounce timer
     if (syncDebounceRef.current) {
@@ -483,8 +373,6 @@ echo get_option('blogname');
     syncDebounceRef.current = setTimeout(async () => {
       try {
         setSyncStatus('syncing');
-        // Save to OPFS first, then upload to cloud
-        await syncMemfsToOPFS(playgroundClient, site.id);
         await uploadSiteToCloud(site.id, user.id);
         await syncSiteMetadata(site, user.id);
         setSyncStatus('synced');
@@ -507,8 +395,6 @@ echo get_option('blogname');
     if (playgroundClient && site?.isInitialized && user) {
       try {
         setSyncStatus('syncing');
-        // Save to OPFS first, then upload to cloud
-        await syncMemfsToOPFS(playgroundClient, site.id);
         await uploadSiteToCloud(site.id, user.id);
         await syncSiteMetadata(site, user.id);
       } catch (error) {

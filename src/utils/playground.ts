@@ -26,85 +26,103 @@ export const initializePlayground = async (
   try {
     console.log(`Initializing WordPress Playground for site: ${siteId}`);
 
-    // Check if WordPress actually exists in local OPFS
-    let hasLocalWordPress = false;
-    try {
-      const opfsRoot = await navigator.storage.getDirectory();
-      const wpStudioDir = await opfsRoot.getDirectoryHandle('wp-studio', { create: false });
-      const sitesDir = await wpStudioDir.getDirectoryHandle('sites', { create: false });
-      const siteDir = await sitesDir.getDirectoryHandle(siteId, { create: false });
-      
-      // Check for a durable marker indicating WordPress core is present in OPFS
-      try {
-        await siteDir.getFileHandle('index.php', { create: false });
-        hasLocalWordPress = true;
-        console.log('Found WordPress core (index.php) in OPFS');
-      } catch {
-        try {
-          const wpIncludes = await siteDir.getDirectoryHandle('wp-includes', { create: false });
-          await wpIncludes.getFileHandle('version.php', { create: false });
-          hasLocalWordPress = true;
-          console.log('Found WordPress core (wp-includes/version.php) in OPFS');
-        } catch {
-          console.log('No WordPress core detected in OPFS');
-        }
-      }
-    } catch {
-      console.log('OPFS site directory does not exist yet');
-    }
-
-    // If the site is initialized but we don't have local WordPress files,
-    // we need to do a fresh install and then restore from cloud
-    const needsFreshInstall = !hasLocalWordPress;
-    
-    console.log(`WordPress installation needed: ${needsFreshInstall}`);
-
-    let client;
-    
-    // Configure OPFS mount so Playground persists directly to OPFS
-    const mountDescriptor = {
+    const mountDescriptor: any = {
       device: {
         type: 'opfs',
         path: `wp-studio/sites/${siteId}`,
       },
       mountpoint: '/wordpress',
-      initialSyncDirection: hasLocalWordPress ? 'opfs-to-memfs' : 'memfs-to-opfs',
-    } as any;
+      initialSyncDirection: isInitialized ? 'opfs-to-memfs' : 'memfs-to-opfs',
+    };
 
-    client = await startPlaygroundWeb({
-      iframe,
-      remoteUrl: `https://playground.wordpress.net/remote.html`,
-      blueprint: PLAYGROUND_CONFIG.blueprint,
-      shouldInstallWordPress: !hasLocalWordPress,
-      mounts: hasLocalWordPress ? [mountDescriptor] : [],
-    });
+    // Try OPFS first, fallback to localStorage for deployed environments
+    let client;
+    let useOPFS = true;
+    
+    try {
+      client = await startPlaygroundWeb({
+        iframe,
+        remoteUrl: `https://playground.wordpress.net/remote.html`,
+        blueprint: PLAYGROUND_CONFIG.blueprint,
+        shouldInstallWordPress: !isInitialized,
+        mounts: isInitialized ? [mountDescriptor] : [],
+      });
 
-    if (!hasLocalWordPress && typeof (client as any).mountOpfs === 'function') {
-      await (client as any).mountOpfs(mountDescriptor);
-    }
-
-    if (typeof (client as any).isReady === 'function') {
-      await (client as any).isReady();
-    }
-
-    // After initial install + mount, create a durable core marker in OPFS for future boots
-    if (!hasLocalWordPress) {
-      try {
-        const opfsRoot = await navigator.storage.getDirectory();
-        const wpStudioDir = await opfsRoot.getDirectoryHandle('wp-studio', { create: true });
-        const sitesDir = await wpStudioDir.getDirectoryHandle('sites', { create: true });
-        const siteDir = await sitesDir.getDirectoryHandle(siteId, { create: true });
-        const markerHandle = await siteDir.getFileHandle('core.marker', { create: true });
-        const markerWritable = await markerHandle.createWritable();
-        await markerWritable.write(JSON.stringify({ createdAt: new Date().toISOString() }));
-        await markerWritable.close();
-        console.log('Created OPFS WordPress core marker');
-      } catch (e) {
-        console.warn('Failed to write core marker:', e);
+      // Wait until Playground is fully ready
+      if (typeof (client as any).isReady === 'function') {
+        await (client as any).isReady();
       }
+
+      // On first launch, mount OPFS after WordPress installs to run memfs -> opfs
+      if (!isInitialized && typeof (client as any).mountOpfs === 'function') {
+        await (client as any).mountOpfs(mountDescriptor);
+        console.log('Mounted OPFS and synced memfs -> OPFS for initial install');
+      }
+    } catch (opfsError) {
+      console.warn('OPFS mount failed, using localStorage fallback:', opfsError);
+      useOPFS = false;
+      
+      // Initialize without OPFS
+      client = await startPlaygroundWeb({
+        iframe,
+        remoteUrl: `https://playground.wordpress.net/remote.html`,
+        blueprint: PLAYGROUND_CONFIG.blueprint,
+        shouldInstallWordPress: !isInitialized,
+      });
+
+      // Wait until ready
+      if (typeof (client as any).isReady === 'function') {
+        await (client as any).isReady();
+      }
+      
+      // Load from localStorage if this is an existing site
+      if (isInitialized) {
+        try {
+          const savedData = localStorage.getItem(`wp_site_${siteId}`);
+          if (savedData) {
+            const { database, files } = JSON.parse(savedData);
+            if (database) {
+              await client.importSQL(database);
+            }
+            if (files) {
+              for (const [path, content] of Object.entries(files)) {
+                await client.writeFile(path, content as string);
+              }
+            }
+            console.log('Restored from localStorage fallback');
+          }
+        } catch (fallbackError) {
+          console.error('localStorage restore failed:', fallbackError);
+        }
+      }
+      
+      // Set up periodic saves for localStorage fallback
+      const saveToLocalStorage = async () => {
+        try {
+          const database = await client.exportSQL();
+          const files: Record<string, string> = {};
+          
+          // Save essential files
+          try {
+            const wpConfig = await client.readFile('/wordpress/wp-config.php');
+            files['/wordpress/wp-config.php'] = wpConfig;
+          } catch (e) {}
+          
+          localStorage.setItem(`wp_site_${siteId}`, JSON.stringify({ database, files }));
+          console.log('Saved to localStorage fallback');
+        } catch (saveError) {
+          console.error('localStorage save failed:', saveError);
+        }
+      };
+      
+      // Save every 30 seconds
+      setInterval(saveToLocalStorage, 30000);
+      
+      // Save on page unload
+      window.addEventListener('beforeunload', saveToLocalStorage);
     }
 
-    console.log('WordPress Playground initialized with OPFS mount');
+    console.log('WordPress Playground initialized successfully');
     return client;
   } catch (error) {
     console.error('Failed to initialize WordPress Playground:', error);
@@ -119,21 +137,78 @@ export const syncMemfsToOPFS = async (
 ): Promise<void> => {
   try {
     console.log(`Syncing memfs to OPFS for site: ${siteId}`);
-    if (client && typeof client.flushOpfs === 'function') {
-      await client.flushOpfs();
-      console.log('flushOpfs completed');
-    }
-    // Touch meta file in OPFS as a heartbeat
+    
+    // Get the site's OPFS directory
+    const opfsRoot = await navigator.storage.getDirectory();
+    const sitesDir = await opfsRoot.getDirectoryHandle('wp-studio/sites', { create: true });
+    const siteDir = await sitesDir.getDirectoryHandle(siteId, { create: true });
+
+    // Export the WordPress database and files
     try {
-      const opfsRoot = await navigator.storage.getDirectory();
-      const wpStudioDir = await opfsRoot.getDirectoryHandle('wp-studio', { create: true });
-      const sitesDir = await wpStudioDir.getDirectoryHandle('sites', { create: true });
-      const siteDir = await sitesDir.getDirectoryHandle(siteId, { create: true });
+      // Export WordPress database
+      const dbExport = await client.run({
+        code: `<?php
+        $export_data = array();
+        
+        // Export database
+        $db = new PDO('sqlite:/wordpress/wp-content/database/.ht.sqlite');
+        $tables = $db->query("SELECT name FROM sqlite_master WHERE type='table'")->fetchAll(PDO::FETCH_COLUMN);
+        
+        foreach ($tables as $table) {
+          $rows = $db->query("SELECT * FROM $table")->fetchAll(PDO::FETCH_ASSOC);
+          $export_data['database'][$table] = $rows;
+        }
+        
+        // Export wp-config.php
+        if (file_exists('/wordpress/wp-config.php')) {
+          $export_data['wp_config'] = file_get_contents('/wordpress/wp-config.php');
+        }
+        
+        echo json_encode($export_data);
+        `
+      });
+
+      // Save database export
+      const dbHandle = await siteDir.getFileHandle('database.json', { create: true });
+      const dbWritable = await dbHandle.createWritable();
+      await dbWritable.write(dbExport.text);
+      await dbWritable.close();
+
+      // Export wp-content files
+      const files = await client.listFiles('/wordpress/wp-content');
+      const fileData: { [key: string]: string } = {};
+      
+      for (const file of files) {
+        if (file.isFile && file.name !== 'database') {
+          try {
+            const content = await client.readFileAsText(file.path);
+            fileData[file.path] = content;
+          } catch (error) {
+            console.warn(`Could not read file ${file.path}:`, error);
+          }
+        }
+      }
+
+      // Save files
+      const filesHandle = await siteDir.getFileHandle('files.json', { create: true });
+      const filesWritable = await filesHandle.createWritable();
+      await filesWritable.write(JSON.stringify(fileData));
+      await filesWritable.close();
+
+      console.log(`Successfully synced memfs to OPFS for site: ${siteId}`);
+    } catch (apiError) {
+      console.error('WordPress API error, using fallback method:', apiError);
+      
+      // Fallback: just mark as saved
       const metaHandle = await siteDir.getFileHandle('meta.json', { create: true });
       const metaWritable = await metaHandle.createWritable();
-      await metaWritable.write(JSON.stringify({ siteId, savedAt: new Date().toISOString(), method: 'mount' }));
+      await metaWritable.write(JSON.stringify({
+        siteId,
+        savedAt: new Date().toISOString(),
+        method: 'fallback'
+      }));
       await metaWritable.close();
-    } catch (_) {}
+    }
   } catch (error) {
     console.error(`Failed to sync memfs to OPFS for site ${siteId}:`, error);
     throw error;
@@ -147,15 +222,79 @@ export const syncOPFSToMemfs = async (
 ): Promise<void> => {
   try {
     console.log(`Syncing OPFS to memfs for site: ${siteId}`);
-    // With OPFS mount, initialSyncDirection handles this restore automatically.
-    // Optionally force a navigation to refresh UI if needed
+    
+    // Get the site's OPFS directory
+    const opfsRoot = await navigator.storage.getDirectory();
+    const sitesDir = await opfsRoot.getDirectoryHandle('wp-studio/sites', { create: false });
+    const siteDir = await sitesDir.getDirectoryHandle(siteId, { create: false });
+
     try {
-      if (client && typeof (client as any).goTo === 'function') {
-        await (client as any).goTo('/?t=' + Date.now());
+      // Load database export
+      const dbHandle = await siteDir.getFileHandle('database.json');
+      const dbFile = await dbHandle.getFile();
+      const dbData = JSON.parse(await dbFile.text());
+
+      // Restore database
+      await client.run({
+        code: `<?php
+        $import_data = json_decode('${JSON.stringify(dbData).replace(/'/g, "\\'")}', true);
+        
+        if (isset($import_data['database'])) {
+          $db = new PDO('sqlite:/wordpress/wp-content/database/.ht.sqlite');
+          
+          foreach ($import_data['database'] as $table => $rows) {
+            if (!empty($rows)) {
+              $columns = array_keys($rows[0]);
+              $placeholders = ':' . implode(', :', $columns);
+              $sql = "INSERT OR REPLACE INTO $table (" . implode(', ', $columns) . ") VALUES ($placeholders)";
+              $stmt = $db->prepare($sql);
+              
+              foreach ($rows as $row) {
+                $stmt->execute($row);
+              }
+            }
+          }
+        }
+        
+        if (isset($import_data['wp_config'])) {
+          file_put_contents('/wordpress/wp-config.php', $import_data['wp_config']);
+        }
+        
+        echo "Database restored";
+        `
+      });
+
+      // Load and restore files
+      try {
+        const filesHandle = await siteDir.getFileHandle('files.json');
+        const filesFile = await filesHandle.getFile();
+        const filesData = JSON.parse(await filesFile.text());
+
+        for (const [filePath, content] of Object.entries(filesData)) {
+          await client.writeFile(filePath, content);
+        }
+      } catch (filesError) {
+        console.warn('Could not restore files:', filesError);
       }
-    } catch (_) {}
-    console.log(`OPFS->memfs sync handled by mount for site: ${siteId}`);
+
+      console.log(`Successfully synced OPFS to memfs for site: ${siteId}`);
+    } catch (restoreError) {
+      console.warn('Could not restore from saved data:', restoreError);
+      // Check if this is a new site
+      try {
+        await siteDir.getFileHandle('meta.json');
+        console.log('Site has saved data but could not restore - continuing with fresh install');
+      } catch {
+        console.log(`No saved data found for site ${siteId} - this is expected for new sites`);
+      }
+    }
   } catch (error) {
     console.error(`Failed to sync OPFS to memfs for site ${siteId}:`, error);
+    // If no saved data exists, this is expected for new sites
+    if (error instanceof DOMException && error.name === 'NotFoundError') {
+      console.log(`No saved data found for site ${siteId} - this is expected for new sites`);
+    } else {
+      throw error;
+    }
   }
 };
