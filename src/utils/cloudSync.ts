@@ -2,56 +2,123 @@ import { supabase } from '@/integrations/supabase/client';
 import { Site } from '@/types/site';
 import { getSiteOPFSDirectory } from './storage';
 
-// Upload site files to cloud storage
+// Upload site files to cloud storage (recursive with manifest)
 export const uploadSiteToCloud = async (siteId: string, userId: string): Promise<void> => {
   try {
     console.log(`[CloudSync] Uploading site ${siteId} to cloud...`);
-    
+
     // Get OPFS directory for the site
     const siteDir = await getSiteOPFSDirectory(siteId);
-    
-    // Export database and files from OPFS
-    const files: { name: string; data: Uint8Array }[] = [];
-    
-    for await (const [name, handle] of (siteDir as any).entries()) {
-      if (handle.kind === 'file') {
-        const file = await handle.getFile();
-        const arrayBuffer = await file.arrayBuffer();
-        files.push({ name, data: new Uint8Array(arrayBuffer) });
-      }
-    }
 
-    // Upload each file to Supabase Storage
+    // Recursively collect files from OPFS
+    const collectFiles = async (
+      dir: FileSystemDirectoryHandle,
+      basePath = ''
+    ): Promise<{ path: string; data: Uint8Array }[]> => {
+      const out: { path: string; data: Uint8Array }[] = [];
+      for await (const [name, handle] of (dir as any).entries()) {
+        if (handle.kind === 'file') {
+          const file = await handle.getFile();
+          const arrayBuffer = await file.arrayBuffer();
+          out.push({ path: `${basePath}${name}`, data: new Uint8Array(arrayBuffer) });
+        } else if (handle.kind === 'directory') {
+          const nested = await collectFiles(handle, `${basePath}${name}/`);
+          out.push(...nested);
+        }
+      }
+      return out;
+    };
+
+    const files = await collectFiles(siteDir);
+
+    // Upload each file to Storage preserving folder structure
+    let uploaded = 0;
     for (const file of files) {
-      const path = `${userId}/${siteId}/${file.name}`;
+      const path = `${userId}/${siteId}/${file.path}`;
       const { error } = await supabase.storage
         .from('wordpress-sites')
-        .upload(path, file.data, { 
+        .upload(path, file.data, {
           upsert: true,
-          contentType: 'application/octet-stream'
+          contentType: 'application/octet-stream',
         });
-
       if (error) {
-        console.error(`[CloudSync] Failed to upload ${file.name}:`, error);
+        console.error(`[CloudSync] Failed to upload ${file.path}:`, error);
         throw error;
       }
+      uploaded++;
     }
 
-    console.log(`[CloudSync] Successfully uploaded ${files.length} files`);
+    // Write manifest for reliable restore on new devices
+    const manifest = { files: files.map((f) => f.path), generatedAt: new Date().toISOString() };
+    const manifestPath = `${userId}/${siteId}/manifest.json`;
+    const { error: manifestError } = await supabase.storage
+      .from('wordpress-sites')
+      .upload(manifestPath, new Blob([JSON.stringify(manifest)], { type: 'application/json' }), {
+        upsert: true,
+        contentType: 'application/json',
+      });
+    if (manifestError) {
+      console.warn('[CloudSync] Failed to upload manifest.json (will still continue):', manifestError);
+    }
+
+    console.log(`[CloudSync] Successfully uploaded ${uploaded} files (+ manifest)`);
   } catch (error) {
     console.error('[CloudSync] Upload failed:', error);
     throw error;
   }
 };
 
-// Download site files from cloud storage
+// Download site files from cloud storage (uses manifest when available)
 export const downloadSiteFromCloud = async (siteId: string, userId: string): Promise<void> => {
   try {
     console.log(`[CloudSync] Downloading site ${siteId} from cloud...`);
-    
+
     const siteDir = await getSiteOPFSDirectory(siteId);
 
-    // List all files for this site in cloud storage
+    // Helper to create nested directories for a file path
+    const ensureDirectoryForFile = async (
+      root: FileSystemDirectoryHandle,
+      relPath: string
+    ): Promise<{ dir: FileSystemDirectoryHandle; fileName: string }> => {
+      const parts = relPath.split('/');
+      const fileName = parts.pop() as string;
+      let current = root;
+      for (const part of parts) {
+        current = await current.getDirectoryHandle(part, { create: true });
+      }
+      return { dir: current, fileName };
+    };
+
+    // Try manifest-based restore first
+    const manifestPath = `${userId}/${siteId}/manifest.json`;
+    const { data: manifestBlob } = await supabase.storage
+      .from('wordpress-sites')
+      .download(manifestPath);
+
+    if (manifestBlob) {
+      const manifestText = await manifestBlob.text();
+      const manifest = JSON.parse(manifestText) as { files: string[] };
+      let downloaded = 0;
+      for (const relPath of manifest.files) {
+        const { data, error } = await supabase.storage
+          .from('wordpress-sites')
+          .download(`${userId}/${siteId}/${relPath}`);
+        if (error || !data) {
+          console.warn(`[CloudSync] Skip missing file from manifest: ${relPath}`);
+          continue;
+        }
+        const { dir, fileName } = await ensureDirectoryForFile(siteDir, relPath);
+        const fileHandle = await dir.getFileHandle(fileName, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(data);
+        await writable.close();
+        downloaded++;
+      }
+      console.log(`[CloudSync] Manifest restore completed: ${downloaded} files`);
+      return;
+    }
+
+    // Fallback: top-level listing (legacy)
     const { data: files, error: listError } = await supabase.storage
       .from('wordpress-sites')
       .list(`${userId}/${siteId}`);
@@ -62,20 +129,17 @@ export const downloadSiteFromCloud = async (siteId: string, userId: string): Pro
       return;
     }
 
-    // Download each file
     for (const file of files) {
       const path = `${userId}/${siteId}/${file.name}`;
       const { data, error } = await supabase.storage
         .from('wordpress-sites')
         .download(path);
-
-      if (error) {
+      if (error || !data) {
         console.error(`[CloudSync] Failed to download ${file.name}:`, error);
         continue;
       }
-
-      // Write to OPFS
-      const fileHandle = await siteDir.getFileHandle(file.name, { create: true });
+      const { dir, fileName } = await ensureDirectoryForFile(siteDir, file.name);
+      const fileHandle = await dir.getFileHandle(fileName, { create: true });
       const writable = await fileHandle.createWritable();
       await writable.write(data);
       await writable.close();
