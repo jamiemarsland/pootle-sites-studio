@@ -6,13 +6,9 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from '@/components/ui/alert-dialog';
 import { Site } from '@/types/site';
-import { syncSiteMetadata, deleteSiteFromCloud } from '@/utils/cloudSync';
-import { deleteSite as deleteLocalSite } from '@/utils/storage';
+import { updateSite, deleteSite } from '@/utils/storage';
 import { Edit, Trash2, ExternalLink } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useAuth } from '@/contexts/AuthContext';
-import SyncStatus from './SyncStatus';
-import { supabase } from '@/integrations/supabase/client';
 
 interface SiteCardProps {
   site: Site;
@@ -22,30 +18,10 @@ interface SiteCardProps {
 export const SiteCard = ({ site, onUpdate }: SiteCardProps) => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { user } = useAuth();
   const [showRenameDialog, setShowRenameDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [newTitle, setNewTitle] = useState(site.title);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [lastSyncedAt, setLastSyncedAt] = useState<string | undefined>();
-
-  // Load sync status from cloud
-  useState(() => {
-    const loadSyncStatus = async () => {
-      if (!user) return;
-      const { data } = await supabase
-        .from('sites')
-        .select('last_synced_at')
-        .eq('id', site.id)
-        .eq('user_id', user.id)
-        .single();
-      
-      if (data?.last_synced_at) {
-        setLastSyncedAt(data.last_synced_at);
-      }
-    };
-    loadSyncStatus();
-  });
 
   const handleOpen = () => {
     console.log('Open button clicked for site:', site.id);
@@ -54,27 +30,16 @@ export const SiteCard = ({ site, onUpdate }: SiteCardProps) => {
     navigate(`/site/${site.id}`);
   };
 
-  const handleRename = async () => {
-    if (!newTitle.trim() || newTitle === site.title || !user) return;
-    
-    try {
-      const updatedSite = {
-        ...site,
+  const handleRename = () => {
+    if (newTitle.trim() && newTitle !== site.title) {
+      updateSite(site.id, { 
         title: newTitle.trim(),
         lastModified: new Date().toISOString()
-      };
-      
-      await syncSiteMetadata(updatedSite, user.id);
+      });
       onUpdate();
       toast({
         title: 'Site renamed',
         description: `Site renamed to "${newTitle.trim()}"`,
-      });
-    } catch (error) {
-      toast({
-        title: 'Rename failed',
-        description: 'Failed to rename the site',
-        variant: 'destructive'
       });
     }
     setShowRenameDialog(false);
@@ -82,15 +47,9 @@ export const SiteCard = ({ site, onUpdate }: SiteCardProps) => {
   };
 
   const handleDelete = async () => {
-    if (!user) return;
-    
     setIsDeleting(true);
     try {
-      // Delete from cloud first
-      await deleteSiteFromCloud(site.id, user.id);
-      // Then delete local OPFS
-      await deleteLocalSite(site.id);
-      
+      await deleteSite(site.id);
       onUpdate();
       toast({
         title: 'Site deleted',
@@ -134,7 +93,6 @@ export const SiteCard = ({ site, onUpdate }: SiteCardProps) => {
                   <div className={`w-2 h-2 rounded-full ${site.isInitialized ? 'bg-primary shadow-glow' : 'bg-muted'}`} />
                   <span>{site.isInitialized ? 'Ready' : 'Initializing'}</span>
                 </div>
-                <SyncStatus status="synced" lastSyncedAt={lastSyncedAt} />
               </div>
             </div>
           </div>
